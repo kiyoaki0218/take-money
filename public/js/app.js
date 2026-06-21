@@ -57,10 +57,10 @@ async function handleLogin() {
   if (!privKeyStr) {
     // 新規生成
     keyPair = nacl.sign.keyPair();
-    privKeyStr = naclUtil.encodeBase64(keyPair.secretKey);
+    privKeyStr = nacl.util.encodeBase64(keyPair.secretKey);
   } else {
     try {
-      const secBytes = naclUtil.decodeBase64(privKeyStr);
+      const secBytes = nacl.util.decodeBase64(privKeyStr);
       keyPair = nacl.sign.keyPair.fromSecretKey(secBytes);
     } catch (e) {
       alert('無効な秘密鍵です');
@@ -69,7 +69,7 @@ async function handleLogin() {
   }
 
   userSecretKey = keyPair.secretKey;
-  userPublicKeyBase64 = naclUtil.encodeBase64(keyPair.publicKey);
+  userPublicKeyBase64 = nacl.util.encodeBase64(keyPair.publicKey);
   
   // アドレスの導出 (SHA-256)
   userAddress = await deriveAddress(userPublicKeyBase64);
@@ -116,7 +116,7 @@ function handleDisconnect() {
 
 // アドレス導出用の補助関数
 async function deriveAddress(pubKeyBase64) {
-  const pubBytes = naclUtil.decodeBase64(pubKeyBase64);
+  const pubBytes = nacl.util.decodeBase64(pubKeyBase64);
   const hashBuffer = await crypto.subtle.digest('SHA-256', pubBytes);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
@@ -429,10 +429,10 @@ async function handleKCSendToAdmin() {
     const seed = new Uint8Array(32);
     seed.fill(7);
     const adminKeyPairObj = nacl.sign.keyPair.fromSeed(seed);
-    const adminPubKeyBase64 = naclUtil.encodeBase64(adminKeyPairObj.publicKey);
+    const adminPubKeyBase64 = nacl.util.encodeBase64(adminKeyPairObj.publicKey);
     
     // アドレス算出
-    const pubBytes = naclUtil.decodeBase64(adminPubKeyBase64);
+    const pubBytes = nacl.util.decodeBase64(adminPubKeyBase64);
     const hashBuffer = await crypto.subtle.digest('SHA-256', pubBytes);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     adminWalletAddress = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
@@ -452,9 +452,9 @@ async function handleKCSendToAdmin() {
 
     // 2. 署名の作成 (from:to:amount:nonce)
     const message = `${userAddress}:${adminWalletAddress}:${amount}:${nonce}`;
-    const msgBytes = naclUtil.decodeUTF8(message);
+    const msgBytes = nacl.util.decodeUTF8(message);
     const signatureBytes = nacl.sign.detached(msgBytes, userSecretKey);
-    const signature = naclUtil.encodeBase64(signatureBytes);
+    const signature = nacl.util.encodeBase64(signatureBytes);
 
     msgEl.innerText = 'KCを送金中...';
 
@@ -548,3 +548,4 @@ async function handleWithdraw() {
     msgEl.innerText = '通信エラーが発生しました';
   }
 }
+
