@@ -7,7 +7,7 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const KC_SERVER_URL = process.env.KC_SERVER_URL || 'http://localhost:3000';
+const KC_SERVER_URL = process.env.KC_SERVER_URL || 'https://kc-server.vercel.app';
 
 app.use(cors());
 app.use(express.json());
@@ -590,7 +590,32 @@ function startSimulators() {
 }
 
 if (require.main === module) {
-  app.listen(PORT, async () => {
+  // KC Proxy Routes
+app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
+  try {
+    const balRes = await fetch(${KC_SERVER_URL}/api/balance/);
+    if (!balRes.ok) return res.status(balRes.status).send(await balRes.text());
+    res.json(await balRes.json());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/game/kc-proxy/send', async (req, res) => {
+  try {
+    const sendRes = await fetch(${KC_SERVER_URL}/api/send, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    if (!sendRes.ok) return res.status(sendRes.status).send(await sendRes.text());
+    res.json(await sendRes.json());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.listen(PORT, async () => {
     console.log(`\n  🎮 Take Money ゲームサーバー準備完了 (Port: ${PORT})`);
     await initAdminWallet();
     startSimulators();
@@ -598,5 +623,6 @@ if (require.main === module) {
 }
 
 module.exports = app;
+
 
 

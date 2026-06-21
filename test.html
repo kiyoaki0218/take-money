@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+</head>
+<body>
+<script>
+try {
+  const privKeyStr = 'Pam19AHMJ+50Nka8IxnP8cUY8uW1hqEbSAh45m60xKLhDylfe3FjC45PGeV4/J10EDLOPrLMy6bHc/nInNg/Yw==';
+  const secBytes = nacl.util.decodeBase64(privKeyStr);
+  const keyPair = nacl.sign.keyPair.fromSecretKey(secBytes);
+  console.log('Success!', keyPair);
+} catch (e) {
+  console.log('Error:', e.message);
+}
+</script>
+</body>
+</html>
