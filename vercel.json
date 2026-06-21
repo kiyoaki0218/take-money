@@ -3,6 +3,10 @@
     {
       "source": "/api/game/:path*",
       "destination": "/api/index"
+    },
+    {
+      "source": "/",
+      "destination": "/index.html"
     }
   ]
 }
