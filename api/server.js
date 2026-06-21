@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const nacl = require('tweetnacl');
 const naclUtil = require('tweetnacl-util');
-const db = require('./db'); // db.supabase をエクスポートしている
+const db = require('../db'); // 親ディレクトリの db.js を指定
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -11,7 +11,9 @@ const KC_SERVER_URL = process.env.KC_SERVER_URL || 'http://localhost:3000';
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// 静的ファイルの提供（ローカル動作用。Vercelではpublicが自動で配信される）
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // --- 運営ウォレットの設定 ---
 let adminKeyPair = null;
@@ -84,7 +86,6 @@ app.post('/api/game/register', async (req, res) => {
 
   const address = addressFromPublicKey(publicKey);
   try {
-    // 既存チェック
     const { data: existing, error: checkError } = await db.supabase
       .from('users')
       .select('*')
@@ -97,7 +98,6 @@ app.post('/api/game/register', async (req, res) => {
       return res.json({ success: true, user: existing, message: 'ログインしました' });
     }
 
-    // 新規登録
     const { data: newUser, error: insertError } = await db.supabase
       .from('users')
       .insert([{ address, public_key: publicKey, nickname, balance_cash: 1000.0 }])
@@ -106,7 +106,6 @@ app.post('/api/game/register', async (req, res) => {
 
     if (insertError) throw insertError;
 
-    // ログ記録
     await db.supabase.from('game_logs').insert([{ message: 新規プレイヤー「\」が参入しました！ }]);
 
     res.json({ success: true, user: newUser, message: 'アカウントを新規作成しました（初期資金 1000 Cashを付与）' });
@@ -130,7 +129,6 @@ app.get('/api/game/status/:address', async (req, res) => {
       return res.status(404).json({ success: false, error: 'ユーザーが見つかりません' });
     }
 
-    // 保有土地
     const { data: lands, error: landsErr } = await db.supabase
       .from('lands')
       .select('*')
@@ -138,7 +136,6 @@ app.get('/api/game/status/:address', async (req, res) => {
 
     if (landsErr) throw landsErr;
 
-    // 保有株式の取得と結合
     const { data: stocksJoin, error: stocksErr } = await db.supabase
       .from('user_stocks')
       .select('quantity, stocks (id, symbol, company_name, current_price, dividend_yield)')
@@ -165,8 +162,6 @@ app.get('/api/game/status/:address', async (req, res) => {
 // 3. 土地一覧取得
 app.get('/api/game/lands', async (req, res) => {
   try {
-    // users (nickname) を結合するために、リレーションを参照
-    // PostgreSQLでの外部キー参照に基づきユーザー名を結合
     const { data: lands, error: landsErr } = await db.supabase
       .from('lands')
       .select('*, users!lands_owner_address_fkey (nickname)');
@@ -207,25 +202,21 @@ app.post('/api/game/lands/buy', async (req, res) => {
       return res.status(400).json({ success: false, error: '資金が不足しています' });
     }
 
-    // 土地が購入済みか最終チェック
     const { data: recheck } = await db.supabase.from('lands').select('owner_address').eq('id', landId).single();
     if (recheck.owner_address) {
       return res.status(400).json({ success: false, error: 'タッチの差で土地が購入されました' });
     }
 
-    // ユーザー残高の更新
     await db.supabase
       .from('users')
       .update({ balance_cash: parseFloat(user.balance_cash) - parseFloat(land.base_price) })
       .eq('address', address);
 
-    // 土地情報の更新
     await db.supabase
       .from('lands')
       .update({ owner_address: address, purchase_price: parseFloat(land.base_price) })
       .eq('id', landId);
 
-    // ログ記録
     const msg = 「\」が「\」を \ Cash で購入しました！;
     await db.supabase.from('game_logs').insert([{ message: msg }]);
 
@@ -259,26 +250,21 @@ app.post('/api/game/lands/takeover', async (req, res) => {
       return res.status(400).json({ success: false, error: 買収資金が不足しています。必要額: \ Cash });
     }
 
-    // 所有権移転処理
-    // 買収者残高減額
     await db.supabase
       .from('users')
       .update({ balance_cash: parseFloat(user.balance_cash) - takeoverPrice })
       .eq('address', address);
 
-    // 元所有者への売却金追加
     await db.supabase
       .from('users')
       .update({ balance_cash: parseFloat(prevOwner.balance_cash) + takeoverPrice })
       .eq('address', land.owner_address);
 
-    // 土地所有権の更新
     await db.supabase
       .from('lands')
       .update({ owner_address: address, purchase_price: takeoverPrice })
       .eq('id', landId);
 
-    // ログ記録
     const msg = 🔥「\」が「\」から「\」を \ Cash で強制買収しました！;
     await db.supabase.from('game_logs').insert([{ message: msg }]);
 
@@ -327,13 +313,11 @@ app.post('/api/game/stocks/trade', async (req, res) => {
         return res.status(400).json({ success: false, error: '資金が不足しています' });
       }
 
-      // 残高更新
       await db.supabase
         .from('users')
         .update({ balance_cash: parseFloat(user.balance_cash) - totalCost })
         .eq('address', address);
 
-      // user_stocks の upsert
       const { data: existingStock } = await db.supabase
         .from('user_stocks')
         .select('quantity')
@@ -369,13 +353,11 @@ app.post('/api/game/stocks/trade', async (req, res) => {
         return res.status(400).json({ success: false, error: '保有株数が不足しています' });
       }
 
-      // 残高更新
       await db.supabase
         .from('users')
         .update({ balance_cash: parseFloat(user.balance_cash) + totalCost })
         .eq('address', address);
 
-      // 持株削減
       await db.supabase
         .from('user_stocks')
         .update({ quantity: existingStock.quantity - qty })
@@ -435,7 +417,6 @@ app.post('/api/game/deposit', async (req, res) => {
 
     const amount = parseFloat(tx.amountDisplay);
 
-    // 重複チェック
     const { data: logExists } = await db.supabase
       .from('game_logs')
       .select('id')
@@ -448,7 +429,6 @@ app.post('/api/game/deposit', async (req, res) => {
 
     const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
 
-    // 加算
     await db.supabase
       .from('users')
       .update({ balance_cash: parseFloat(user.balance_cash) + amount })
@@ -510,7 +490,6 @@ app.post('/api/game/withdraw', async (req, res) => {
       return res.status(400).json({ success: false, error: KCサーバー送金失敗: \ });
     }
 
-    // ゲーム内残高削減
     await db.supabase
       .from('users')
       .update({ balance_cash: parseFloat(user.balance_cash) - withdrawAmount })
@@ -527,22 +506,19 @@ app.post('/api/game/withdraw', async (req, res) => {
 });
 
 // --- シミュレーション処理 (Supabase版) ---
-
 function startSimulators() {
   setInterval(async () => {
     try {
-      // 1. 株価のランダム変動
       const { data: stocks } = await db.supabase.from('stocks').select('*');
       if (stocks) {
         for (const stock of stocks) {
-          const changePercent = (Math.random() * 0.2) - 0.1; // -10% 〜 +10%
+          const changePercent = (Math.random() * 0.2) - 0.1;
           let newPrice = parseFloat(stock.current_price) * (1 + changePercent);
           newPrice = Math.max(10, Math.round(newPrice * 100) / 100);
           await db.supabase.from('stocks').update({ current_price: newPrice }).eq('id', stock.id);
         }
       }
 
-      // 2. 地価の変動
       const { data: lands } = await db.supabase.from('lands').select('*');
       if (lands) {
         for (const land of lands) {
@@ -553,13 +529,11 @@ function startSimulators() {
         }
       }
 
-      // 3. 土地家賃の配布
       const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address').not('owner_address', 'is', null);
       if (ownedLands) {
         for (const land of ownedLands) {
           const rentIncome = Math.round(parseFloat(land.purchase_price) * 0.015);
           if (rentIncome > 0) {
-            // 加算
             const { data: user } = await db.supabase.from('users').select('balance_cash').eq('address', land.owner_address).single();
             if (user) {
               await db.supabase.from('users').update({ balance_cash: parseFloat(user.balance_cash) + rentIncome }).eq('address', land.owner_address);
@@ -568,7 +542,6 @@ function startSimulators() {
         }
       }
 
-      // 4. 配当金の配布
       const { data: holdings } = await db.supabase.from('user_stocks').select('quantity, address, stock_id').gt('quantity', 0);
       if (holdings && stocks) {
         for (const hold of holdings) {
@@ -585,13 +558,12 @@ function startSimulators() {
         }
       }
 
-      // ランダムイベント
       if (Math.random() < 0.2) {
         const events = [
           "📢 地価急騰ニュース：銀座エリアのインフラ整備が決定し、周辺の地価が上昇傾向です！",
           "📢 株式ニュース：アップルパイ社が新作アップルタルトを発表し、株価に好影響を与えています。",
           "📢 不動産市況：全体の不動産家賃収入が活性化しています！",
-          "📢 テスラコプター社：新モデルのヘリコプターが航空法に適合し、市場の期待が高まっています。"
+          "📢 テスラコプター社：新モデル of ヘリコプターが航空法に適合し、市場の期待が高まっています。"
         ];
         const randomMsg = events[Math.floor(Math.random() * events.length)];
         await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
@@ -603,8 +575,13 @@ function startSimulators() {
   }, 30000);
 }
 
-app.listen(PORT, async () => {
-  console.log(\n  🎮 Take Money ゲームサーバー準備完了 (Port: \thPORT\t));
-  await initAdminWallet();
-  startSimulators();
-});
+// サーバーレス関数環境以外（ローカルテストなど）で直接実行された場合のみ listen
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    console.log(\n  🎮 Take Money ゲームサーバー準備完了 (Port: \));
+    await initAdminWallet();
+    startSimulators();
+  });
+}
+
+module.exports = app;
