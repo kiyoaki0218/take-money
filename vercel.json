@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/game/:path*",
-      "destination": "/api/server"
+      "destination": "/api/index"
     }
   ]
 }
