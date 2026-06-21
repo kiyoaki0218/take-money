@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const nacl = require('tweetnacl');
@@ -12,7 +12,6 @@ const KC_SERVER_URL = process.env.KC_SERVER_URL || 'http://localhost:3000';
 app.use(cors());
 app.use(express.json());
 
-// 静的ファイルの提供
 // app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // --- 運営ウォレットの設定 ---
@@ -34,10 +33,9 @@ async function initAdminWallet() {
     const pubBytes = Buffer.from(adminPublicKeyBase64, 'base64');
     adminAddress = crypto.createHash('sha256').update(pubBytes).digest('hex').slice(0, 40);
     
-    console.log(\n  🎮 Game Admin Wallet Address: \);
+    console.log(`\n  🎮 Game Admin Wallet Address: ${adminAddress}`);
     
-    // ネイティブ fetch の使用
-    const registerRes = await fetch(\/api/register, {
+    const registerRes = await fetch(`${KC_SERVER_URL}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -46,13 +44,12 @@ async function initAdminWallet() {
       })
     });
     const regData = await registerRes.json();
-    console.log(  🪙 KC Server Register Status:, regData.message || regData.error || 'Registered');
+    console.log(`  🪙 KC Server Register Status:`, regData.message || regData.error || 'Registered');
   } catch (e) {
-    console.log(  ⚠️ KC Server connection failed. Run Fiction Money server on port 3000 to enable full integration.);
+    console.log(`  ⚠️ KC Server connection failed. Run Fiction Money server on port 3000 to enable full integration.`);
   }
 }
 
-// サーバーレス用の遅延初期化ミドルウェア
 async function ensureInit(req, res, next) {
   if (!isInitialized) {
     await initAdminWallet();
@@ -63,7 +60,6 @@ async function ensureInit(req, res, next) {
 
 app.use('/api/game', ensureInit);
 
-// 署名検証とアドレス導出
 function verifySignature(message, signature, publicKey) {
   try {
     const msgBytes = naclUtil.decodeUTF8(message);
@@ -86,8 +82,6 @@ function signMessage(message) {
   const signatureBytes = nacl.sign.detached(msgBytes, adminKeyPair.secretKey);
   return naclUtil.encodeBase64(signatureBytes);
 }
-
-// --- API エンドポイント ---
 
 // 1. ユーザー登録
 app.post('/api/game/register', async (req, res) => {
@@ -118,11 +112,11 @@ app.post('/api/game/register', async (req, res) => {
 
     if (insertError) throw insertError;
 
-    await db.supabase.from('game_logs').insert([{ message: 新規プレイヤー「\」が参入しました！ }]);
+    await db.supabase.from('game_logs').insert([{ message: `新規プレイヤー「${nickname}」が参入しました！` }]);
 
     res.json({ success: true, user: newUser, message: 'アカウントを新規作成しました（初期資金 1000 Cashを付与）' });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Register Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -168,7 +162,7 @@ app.get('/api/game/status/:address', async (req, res) => {
 
     res.json({ success: true, user, lands, stocks: formattedStocks });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Status Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -195,7 +189,7 @@ app.get('/api/game/lands', async (req, res) => {
 
     res.json({ success: true, lands: formattedLands });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Lands Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -232,12 +226,12 @@ app.post('/api/game/lands/buy', async (req, res) => {
       .update({ owner_address: address, purchase_price: parseFloat(land.base_price) })
       .eq('id', landId);
 
-    const msg = 「\」が「\」を \ Cash で購入しました！;
+    const msg = `「${user.nickname}」が「${land.name}」を ${land.base_price} Cash で購入しました！`;
     await db.supabase.from('game_logs').insert([{ message: msg }]);
 
     res.json({ success: true, message: '土地の購入が完了しました' });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Lands Buy Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -263,7 +257,7 @@ app.post('/api/game/lands/takeover', async (req, res) => {
     const takeoverPrice = parseFloat(land.purchase_price) * 1.5;
 
     if (parseFloat(user.balance_cash) < takeoverPrice) {
-      return res.status(400).json({ success: false, error: 買収資金が不足しています。必要額: \ Cash });
+      return res.status(400).json({ success: false, error: `買収資金が不足しています。必要額: ${takeoverPrice} Cash` });
     }
 
     await db.supabase
@@ -281,12 +275,12 @@ app.post('/api/game/lands/takeover', async (req, res) => {
       .update({ owner_address: address, purchase_price: takeoverPrice })
       .eq('id', landId);
 
-    const msg = 🔥「\」が「\」から「\」を \ Cash で強制買収しました！;
+    const msg = `🔥「${user.nickname}」が「${prevOwner.nickname}」から「${land.name}」を ${takeoverPrice} Cash で強制買収しました！`;
     await db.supabase.from('game_logs').insert([{ message: msg }]);
 
-    res.json({ success: true, message: \を\ Cashで買収しました！ });
+    res.json({ success: true, message: `${land.name}を${takeoverPrice} Cashで買収しました！` });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Lands Takeover Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -303,7 +297,7 @@ app.get('/api/game/stocks', async (req, res) => {
     }));
     res.json({ success: true, stocks: formatted });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Stocks Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -356,7 +350,7 @@ app.post('/api/game/stocks/trade', async (req, res) => {
       }
 
       await db.supabase.from('game_logs').insert([{
-        message: 📈「\」が「\」の株を \ 株 (\ Cash) 購入しました
+        message: `📈「${user.nickname}」が「${stock.company_name}」の株を ${qty} 株 (${totalCost} Cash) 購入しました`
       }]);
 
     } else if (type === 'sell') {
@@ -383,13 +377,13 @@ app.post('/api/game/stocks/trade', async (req, res) => {
         .eq('stock_id', stockId);
 
       await db.supabase.from('game_logs').insert([{
-        message: 📉「\」が「\」の株を \ 株 (\ Cash) 売却しました
+        message: `📉「${user.nickname}」が「${stock.company_name}」の株を ${qty} 株 (${totalCost} Cash) 売却しました`
       }]);
     }
 
     res.json({ success: true, message: '株式取引が完了しました' });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Stocks Trade Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -406,7 +400,7 @@ app.get('/api/game/logs', async (req, res) => {
     if (err) throw err;
     res.json({ success: true, logs });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Logs Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -419,7 +413,7 @@ app.post('/api/game/deposit', async (req, res) => {
   }
 
   try {
-    const txRes = await fetch(\/api/transactions/\);
+    const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
     if (!txRes.ok) {
       return res.status(400).json({ success: false, error: 'KC取引履歴の取得に失敗しました' });
     }
@@ -439,7 +433,7 @@ app.post('/api/game/deposit', async (req, res) => {
     const { data: logExists } = await db.supabase
       .from('game_logs')
       .select('id')
-      .like('message', %txId: \%)
+      .like('message', `%txId: ${txId}%`)
       .maybeSingle();
 
     if (logExists) {
@@ -454,12 +448,12 @@ app.post('/api/game/deposit', async (req, res) => {
       .eq('address', address);
 
     await db.supabase.from('game_logs').insert([{
-      message: 💰「\」が \ KC をゲーム内にデポジットしました！ (txId: \)
+      message: `💰「${user.nickname}」が ${amount} KC をゲーム内にデポジットしました！ (txId: ${txId})`
     }]);
 
-    res.json({ success: true, amount, message: \ KC をデポジット反映しました });
+    res.json({ success: true, amount, message: `${amount} KC をデポジット反映しました` });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Deposit Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -481,17 +475,17 @@ app.post('/api/game/withdraw', async (req, res) => {
       return res.status(400).json({ success: false, error: '残高が不足しています' });
     }
 
-    const balRes = await fetch(\/api/balance/\);
+    const balRes = await fetch(`${KC_SERVER_URL}/api/balance/${address}`);
     if (!balRes.ok) {
       return res.status(500).json({ success: false, error: 'KCサーバーへの接続に失敗しました' });
     }
     const balData = await balRes.json();
     const nonce = balData.nonce;
 
-    const message = \:\:\:\;
+    const message = `${adminAddress}:${address}:${withdrawAmount}:${nonce}`;
     const signature = signMessage(message);
 
-    const sendRes = await fetch(\/api/send, {
+    const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -506,7 +500,7 @@ app.post('/api/game/withdraw', async (req, res) => {
 
     const sendData = await sendRes.json();
     if (!sendData.success) {
-      return res.status(400).json({ success: false, error: KCサーバー送金失敗: \ });
+      return res.status(400).json({ success: false, error: `KCサーバー送金失敗: ${sendData.error}` });
     }
 
     await db.supabase
@@ -515,12 +509,12 @@ app.post('/api/game/withdraw', async (req, res) => {
       .eq('address', address);
 
     await db.supabase.from('game_logs').insert([{
-      message: 💸「\」が \ KC をウォレットへ出金しました。
+      message: `💸「${user.nickname}」が ${withdrawAmount} KC をウォレットへ出金しました。`
     }]);
 
     res.json({ success: true, amount: withdrawAmount, message: '出金が完了しました！' });
   } catch (e) {
-    console.error("API Error:", e);
+    console.error("Withdraw Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -583,7 +577,7 @@ function startSimulators() {
           "📢 地価急騰ニュース：銀座エリアのインフラ整備が決定し、周辺の地価が上昇傾向です！",
           "📢 株式ニュース：アップルパイ社が新作アップルタルトを発表し、株価に好影響を与えています。",
           "📢 不動産市況：全体の不動産家賃収入が活性化しています！",
-          "📢 テスラコプター社：新モデル of ヘリコプターが航空法に適合し、市場の期待が高まっています。"
+          "📢 テスラコプター社：新モデルのヘリコプターが航空法に適合し、市場の期待が高まっています。"
         ];
         const randomMsg = events[Math.floor(Math.random() * events.length)];
         await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
@@ -595,10 +589,9 @@ function startSimulators() {
   }, 30000);
 }
 
-// サーバーレス関数環境以外（ローカルテストなど）で直接実行された場合のみ listen
 if (require.main === module) {
   app.listen(PORT, async () => {
-    console.log(\n  🎮 Take Money ゲームサーバー準備完了 (Port: \));
+    console.log(`\n  🎮 Take Money ゲームサーバー準備完了 (Port: ${PORT})`);
     await initAdminWallet();
     startSimulators();
   });
