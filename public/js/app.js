@@ -441,7 +441,7 @@ async function handleKCSendToAdmin() {
     // 1. KCサーバーから現在の送信者(ユーザー)のnonceを取得
     const balRes = await fetch(``${API_BASE}/kc-proxy/balance/${userAddress}`);
     if (!balRes.ok) {
-      msgEl.innerText = 'KCサーバーにアカウントが見つかりません。先にKCサーバーで招待コードを使用してウォレットを登録してください。';
+      const errData = await balRes.text(); msgEl.innerText = 'KC Server Error: ' + balRes.status + ' - ' + errData;先にKCサーバーで招待コードを使用してウォレットを登録してください。';
       return;
     }
     const balData = await balRes.json();
@@ -547,6 +547,7 @@ async function handleWithdraw() {
     msgEl.innerText = '通信エラーが発生しました';
   }
 }
+
 
 
 
