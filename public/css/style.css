@@ -1,0 +1,519 @@
+﻿:root {
+  --bg-primary: #090d16;
+  --bg-secondary: #131a2b;
+  --glass-bg: rgba(22, 33, 54, 0.45);
+  --glass-bg-dark: rgba(10, 15, 28, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --accent-blue: #38bdf8;
+  --accent-purple: #a855f7;
+  --accent-green: #34d399;
+  --accent-red: #f87171;
+  --accent-orange: #fb923c;
+  --font-family: 'Inter', 'Outfit', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(at 10% 10%, rgba(56, 189, 248, 0.08) 0px, transparent 50%),
+    radial-gradient(at 90% 90%, rgba(168, 85, 247, 0.08) 0px, transparent 50%);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* グラスモルフィズムカード */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-dark {
+  background: var(--glass-bg-dark);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+}
+
+/* アプリコンテナ */
+.app-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ヘッダー */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 28px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  font-size: 2.2rem;
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.5));
+}
+
+.logo h1 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.8rem;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.status-card .label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.status-card .val {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.highlight-cash {
+  border-color: rgba(52, 211, 153, 0.2);
+  background: rgba(52, 211, 153, 0.02);
+}
+.highlight-cash .val {
+  color: var(--accent-green);
+}
+.highlight-cash .unit {
+  font-size: 0.75rem;
+  color: var(--accent-green);
+}
+
+.highlight-kc {
+  border-color: rgba(251, 146, 60, 0.2);
+  background: rgba(251, 146, 60, 0.02);
+}
+.highlight-kc .val {
+  color: var(--accent-orange);
+}
+.highlight-kc .unit {
+  font-size: 0.75rem;
+  color: var(--accent-orange);
+}
+
+/* メインレイアウト */
+main {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 1200px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 各セクション */
+section {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section-header h2 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1.3rem;
+  margin-bottom: 4px;
+}
+
+.section-header p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* 不動産グリッドマップ */
+.grid-map {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 12px;
+  aspect-ratio: 1;
+}
+
+.map-cell {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.map-cell:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent-blue);
+  box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);
+}
+
+.map-cell.owned {
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.map-cell.my-land {
+  background: rgba(52, 211, 153, 0.08);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.map-cell.selected {
+  outline: 2px solid var(--accent-blue);
+}
+
+.map-cell .cell-coords {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.map-cell .cell-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-top: 4px;
+  line-height: 1.2;
+}
+
+.map-cell .cell-owner {
+  font-size: 0.7rem;
+  color: var(--accent-purple);
+  margin-top: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.map-cell.my-land .cell-owner {
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
+.map-cell .cell-price {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  margin-top: 4px;
+}
+
+/* 株式リスト */
+.stock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.stock-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stock-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(4px);
+}
+
+.stock-card.selected {
+  border-color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.04);
+}
+
+.stock-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-symbol {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.stock-name {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.stock-values {
+  text-align: right;
+}
+
+.stock-price {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--accent-green);
+}
+
+.stock-div {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+/* 詳細パネル */
+.detail-panel {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: auto;
+}
+
+.detail-panel h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.1rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ウォレット・ログセクション */
+.wallet-log-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.wallet-console {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+.console-box {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.console-box h3 {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  border-left: 3px solid var(--accent-blue);
+  padding-left: 8px;
+}
+
+.console-box p.desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.form-row input, .input-group input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+}
+
+.form-row input:focus, .input-group input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* ログコンソール */
+.log-console {
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.log-list {
+  overflow-y: auto;
+  max-height: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.8rem;
+  padding-right: 4px;
+}
+
+.log-item {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 6px;
+  line-height: 1.4;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ボタン */
+.btn {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-family: var(--font-family);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+.btn-primary {
+  background: var(--accent-blue);
+  color: #000;
+}
+
+.btn-success {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.btn-warning {
+  background: var(--accent-orange);
+  color: #000;
+}
+
+.btn-danger {
+  background: var(--accent-red);
+  color: var(--text-primary);
+}
+
+.w-full {
+  width: 100%;
+}
+
+/* モーダル */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(5, 8, 16, 0.85);
+  backdrop-filter: blur(20px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  width: 480px;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-group label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.error-msg {
+  color: var(--accent-red);
+  font-size: 0.8rem;
+}
+
+.info-msg {
+  font-size: 0.75rem;
+  margin-top: 4px;
+  color: var(--accent-blue);
+}
+
+.hidden {
+  display: none !important;
+}

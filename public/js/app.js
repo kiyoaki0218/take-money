@@ -1,0 +1,550 @@
+﻿const API_BASE = '/api/game';
+const KC_SERVER = 'http://localhost:3000';
+
+let userAddress = '';
+let userPublicKeyBase64 = '';
+let userSecretKey = null; // Uint8Array
+let selectedLandId = null;
+let selectedStockId = null;
+
+// ドキュメント読み込み完了時
+document.addEventListener('DOMContentLoaded', () => {
+  setupEventListeners();
+  autoLoginIfSaved();
+});
+
+// イベントリスナーのセットアップ
+function setupEventListeners() {
+  document.getElementById('btn-login').addEventListener('click', handleLogin);
+  document.getElementById('btn-disconnect').addEventListener('click', handleDisconnect);
+  
+  // 土地アクション
+  document.getElementById('btn-buy-land').addEventListener('click', () => handleLandAction('buy'));
+  document.getElementById('btn-takeover-land').addEventListener('click', () => handleLandAction('takeover'));
+
+  // 株式アクション
+  document.getElementById('btn-buy-stock').addEventListener('click', () => handleStockAction('buy'));
+  document.getElementById('btn-sell-stock').addEventListener('click', () => handleStockAction('sell'));
+
+  // デポジット・出金アクション
+  document.getElementById('btn-send-kc-to-admin').addEventListener('click', handleKCSendToAdmin);
+  document.getElementById('btn-claim-deposit').addEventListener('click', handleClaimDeposit);
+  document.getElementById('btn-withdraw').addEventListener('click', handleWithdraw);
+}
+
+// 保存されたキーがあれば自動ログイン
+function autoLoginIfSaved() {
+  const savedSec = localStorage.getItem('tm_secret_key');
+  const savedNick = localStorage.getItem('tm_nickname');
+  if (savedSec && savedNick) {
+    document.getElementById('private-key-input').value = savedSec;
+    document.getElementById('nickname-input').value = savedNick;
+    handleLogin();
+  }
+}
+
+// 接続（ログイン）処理
+async function handleLogin() {
+  const nickname = document.getElementById('nickname-input').value.trim();
+  let privKeyStr = document.getElementById('private-key-input').value.trim();
+
+  if (!nickname) {
+    alert('ニックネームを入力してください');
+    return;
+  }
+
+  let keyPair;
+  if (!privKeyStr) {
+    // 新規生成
+    keyPair = nacl.sign.keyPair();
+    privKeyStr = naclUtil.encodeBase64(keyPair.secretKey);
+  } else {
+    try {
+      const secBytes = naclUtil.decodeBase64(privKeyStr);
+      keyPair = nacl.sign.keyPair.fromSecretKey(secBytes);
+    } catch (e) {
+      alert('無効な秘密鍵です');
+      return;
+    }
+  }
+
+  userSecretKey = keyPair.secretKey;
+  userPublicKeyBase64 = naclUtil.encodeBase64(keyPair.publicKey);
+  
+  // アドレスの導出 (SHA-256)
+  userAddress = await deriveAddress(userPublicKeyBase64);
+
+  // サーバー登録
+  try {
+    const res = await fetch(\/register, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        publicKey: userPublicKeyBase64,
+        nickname: nickname
+      })
+    });
+    
+    const data = await res.json();
+    if (!data.success) {
+      alert(data.error);
+      return;
+    }
+
+    // 保存
+    localStorage.setItem('tm_secret_key', privKeyStr);
+    localStorage.setItem('tm_nickname', nickname);
+
+    // UI更新
+    document.getElementById('login-modal').classList.add('hidden');
+    document.getElementById('display-nickname').innerText = nickname;
+    document.getElementById('display-address').innerText = userAddress.slice(0, 8) + '...';
+
+    // ループ更新の開始
+    startUpdateLoop();
+  } catch (e) {
+    alert('サーバーへの接続に失敗しました');
+  }
+}
+
+// 切断処理
+function handleDisconnect() {
+  localStorage.removeItem('tm_secret_key');
+  localStorage.removeItem('tm_nickname');
+  window.location.reload();
+}
+
+// アドレス導出用の補助関数
+async function deriveAddress(pubKeyBase64) {
+  const pubBytes = naclUtil.decodeBase64(pubKeyBase64);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', pubBytes);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+}
+
+// ループ更新
+function startUpdateLoop() {
+  updateAllData();
+  setInterval(updateAllData, 2000); // 2秒ごと
+}
+
+function updateAllData() {
+  updateUserStatus();
+  updateLandsMap();
+  updateStocksList();
+  updateLogs();
+}
+
+// ユーザーステータス（残高含む）取得
+async function updateUserStatus() {
+  try {
+    const res = await fetch(\/status/\);
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('display-cash').innerText = data.user.balance_cash.toFixed(2);
+      
+      // KCサーバーからウォレット残高を取得
+      const kcRes = await fetch(\/api/balance/\);
+      if (kcRes.ok) {
+        const kcData = await kcRes.json();
+        document.getElementById('display-kc-balance').innerText = kcData.balance.toFixed(2);
+      }
+    }
+  } catch (e) {}
+}
+
+// 共有土地マップ更新
+async function updateLandsMap() {
+  try {
+    const res = await fetch(\/lands);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const grid = document.getElementById('grid-map');
+    
+    // 現在の選択セルを維持するためIDを控える
+    const beforeGridLength = grid.children.length;
+    
+    // マスデータの並び替え(座標基準で4x4グリッド)
+    const lands = data.lands.sort((a, b) => {
+      const [ax, ay] = a.coordinate.split(',').map(Number);
+      const [bx, by] = b.coordinate.split(',').map(Number);
+      return ay === by ? ax - bx : ay - by;
+    });
+
+    if (beforeGridLength === 0) {
+      grid.innerHTML = '';
+      lands.forEach(land => {
+        const cell = document.createElement('div');
+        cell.className = 'map-cell';
+        cell.dataset.id = land.id;
+        cell.innerHTML = 
+          <span class="cell-coords">\</span>
+          <span class="cell-name">\</span>
+          <span class="cell-owner"></span>
+          <span class="cell-price"></span>
+        ;
+        cell.addEventListener('click', () => selectLand(land.id));
+        grid.appendChild(cell);
+      });
+    }
+
+    // 各マスの状態更新
+    lands.forEach(land => {
+      const cell = grid.querySelector([data-id="\"]);
+      if (!cell) return;
+
+      const ownerSpan = cell.querySelector('.cell-owner');
+      const priceSpan = cell.querySelector('.cell-price');
+
+      if (land.owner_address) {
+        cell.className = 'map-cell owned';
+        if (land.owner_address === userAddress) {
+          cell.classList.add('my-land');
+          ownerSpan.innerText = 'あなた';
+        } else {
+          ownerSpan.innerText = land.owner_name || land.owner_address.slice(0, 8);
+        }
+        priceSpan.innerText = 買収: \ Cash;
+      } else {
+        cell.className = 'map-cell';
+        ownerSpan.innerText = '空き地';
+        priceSpan.innerText = 定価: \ Cash;
+      }
+
+      if (selectedLandId === land.id) {
+        cell.classList.add('selected');
+        // 詳細パネルの更新
+        document.getElementById('land-name').innerText = land.name;
+        document.getElementById('land-coordinate').innerText = land.coordinate;
+        document.getElementById('land-owner').innerText = land.owner_address === userAddress ? 'あなた' : (land.owner_name || (land.owner_address ? land.owner_address.slice(0, 8) : 'なし'));
+        document.getElementById('land-base-price').innerText = land.base_price.toFixed(0);
+        document.getElementById('land-purchase-price').innerText = land.purchase_price ? land.purchase_price.toFixed(0) : '---';
+        document.getElementById('land-rent').innerText = (land.purchase_price ? land.purchase_price * 0.015 : land.base_price * 0.015).toFixed(1) + '/30秒';
+
+        // ボタンの切り替え
+        if (land.owner_address) {
+          document.getElementById('btn-buy-land').classList.add('hidden');
+          if (land.owner_address === userAddress) {
+            document.getElementById('btn-takeover-land').classList.add('hidden');
+          } else {
+            document.getElementById('btn-takeover-land').classList.remove('hidden');
+          }
+        } else {
+          document.getElementById('btn-buy-land').classList.remove('hidden');
+          document.getElementById('btn-takeover-land').classList.add('hidden');
+        }
+      }
+    });
+
+  } catch (e) {}
+}
+
+function selectLand(id) {
+  selectedLandId = id;
+  const cells = document.querySelectorAll('.map-cell');
+  cells.forEach(c => c.classList.remove('selected'));
+  
+  const targetCell = document.querySelector([data-id="\"]);
+  if (targetCell) targetCell.classList.add('selected');
+
+  document.getElementById('land-detail-panel').classList.remove('hidden');
+  document.getElementById('land-action-msg').innerText = '';
+}
+
+// 土地購入・買収の実行
+async function handleLandAction(actionType) {
+  if (!selectedLandId) return;
+  const endpoint = actionType === 'buy' ? '/lands/buy' : '/lands/takeover';
+  const msgEl = document.getElementById('land-action-msg');
+  msgEl.innerText = '処理中...';
+
+  try {
+    const res = await fetch(\\, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        landId: selectedLandId
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = エラー: \;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+// 株式リスト更新
+async function updateStocksList() {
+  try {
+    const res = await fetch(\/stocks);
+    const data = await res.json();
+    if (!data.success) return;
+
+    // 保有株数の把握のため、ユーザーステータスも同時に参照
+    const userRes = await fetch(\/status/\);
+    const userData = await userRes.json();
+    const myHoldings = userData.success ? userData.stocks : [];
+
+    const list = document.getElementById('stock-list');
+    const beforeListLength = list.children.length;
+
+    if (beforeListLength === 0) {
+      list.innerHTML = '';
+      data.stocks.forEach(stock => {
+        const card = document.createElement('div');
+        card.className = 'stock-card';
+        card.dataset.id = stock.id;
+        card.innerHTML = 
+          <div class="stock-info">
+            <span class="stock-symbol">\</span>
+            <span class="stock-name">\</span>
+          </div>
+          <div class="stock-values">
+            <div class="stock-price">\ Cash</div>
+            <div class="stock-div">配当: \%</div>
+          </div>
+        ;
+        card.addEventListener('click', () => selectStock(stock.id));
+        list.appendChild(card);
+      });
+    }
+
+    // 各カードの状態更新
+    data.stocks.forEach(stock => {
+      const card = list.querySelector([data-id="\"]);
+      if (!card) return;
+
+      const priceDiv = card.querySelector('.stock-price');
+      priceDiv.innerText = \ Cash;
+
+      const holding = myHoldings.find(h => h.id === stock.id);
+      const heldQty = holding ? holding.quantity : 0;
+
+      if (selectedStockId === stock.id) {
+        card.classList.add('selected');
+        document.getElementById('trade-stock-name').innerText = \ (\);
+        document.getElementById('trade-stock-price').innerText = stock.current_price.toFixed(2);
+        document.getElementById('trade-user-qty').innerText = heldQty;
+      } else {
+        card.classList.remove('selected');
+      }
+    });
+
+  } catch (e) {}
+}
+
+function selectStock(id) {
+  selectedStockId = id;
+  const cards = document.querySelectorAll('.stock-card');
+  cards.forEach(c => c.classList.remove('selected'));
+  
+  const targetCard = document.querySelector([data-id="\"]);
+  if (targetCard) targetCard.classList.add('selected');
+
+  document.getElementById('stock-trade-panel').classList.remove('hidden');
+  document.getElementById('stock-action-msg').innerText = '';
+}
+
+// 株式売買の実行
+async function handleStockAction(type) {
+  if (!selectedStockId) return;
+  const qty = parseInt(document.getElementById('trade-qty-input').value);
+  const msgEl = document.getElementById('stock-action-msg');
+  if (isNaN(qty) || qty <= 0) {
+    alert('数量を正しく入力してください');
+    return;
+  }
+
+  msgEl.innerText = '取引中...';
+
+  try {
+    const res = await fetch(\/stocks/trade, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        stockId: selectedStockId,
+        type: type,
+        quantity: qty
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateStocksList();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = エラー: \;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+// ニュースログの更新
+async function updateLogs() {
+  try {
+    const res = await fetch(\/logs);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const list = document.getElementById('log-list');
+    list.innerHTML = '';
+    data.logs.forEach(log => {
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerText = [\] \;
+      list.appendChild(item);
+    });
+  } catch (e) {}
+}
+
+// --- KC送受金連携処理 ---
+
+// 運営アドレス（ゲームサーバーから初回取得）
+let adminWalletAddress = '';
+
+// 1. KCサーバーへの送金 (デポジットステップ1)
+async function handleKCSendToAdmin() {
+  const amount = parseFloat(document.getElementById('deposit-amount-input').value);
+  const msgEl = document.getElementById('deposit-msg');
+  if (isNaN(amount) || amount <= 0) {
+    alert('金額を正しく入力してください');
+    return;
+  }
+
+  msgEl.innerText = '運営ウォレットアドレスを照会中...';
+
+  try {
+    // 運営アドレスを擬似的にゲームサーバーのログイン・設定から抽出するか、
+    // ここではデモ用シードから算出した運営アドレスを固定（server.jsと一致）
+    const seed = new Uint8Array(32);
+    seed.fill(7);
+    const adminKeyPairObj = nacl.sign.keyPair.fromSeed(seed);
+    const adminPubKeyBase64 = naclUtil.encodeBase64(adminKeyPairObj.publicKey);
+    
+    // アドレス算出
+    const pubBytes = naclUtil.decodeBase64(adminPubKeyBase64);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', pubBytes);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    adminWalletAddress = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+
+    msgEl.innerText = KCサーバーから送信元のnonceを取得中...;
+
+    // 1. KCサーバーから現在の送信者(ユーザー)のnonceを取得
+    const balRes = await fetch(\/api/balance/\);
+    if (!balRes.ok) {
+      msgEl.innerText = 'KCサーバーにアカウントが見つかりません。先にKCサーバーで招待コードを使用してウォレットを登録してください。';
+      return;
+    }
+    const balData = await balRes.json();
+    const nonce = balData.nonce;
+
+    msgEl.innerText = 'トランザクションに署名中...';
+
+    // 2. 署名の作成 (from:to:amount:nonce)
+    const message = \:\:\:\;
+    const msgBytes = naclUtil.decodeUTF8(message);
+    const signatureBytes = nacl.sign.detached(msgBytes, userSecretKey);
+    const signature = naclUtil.encodeBase64(signatureBytes);
+
+    msgEl.innerText = 'KCを送金中...';
+
+    // 3. KCサーバーへ直接送金リクエスト
+    const sendRes = await fetch(\/api/send, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: userAddress,
+        to: adminWalletAddress,
+        amount: amount,
+        nonce: nonce,
+        signature: signature,
+        publicKey: userPublicKeyBase64
+      })
+    });
+
+    const sendData = await sendRes.json();
+    if (sendData.success) {
+      msgEl.innerText = 送金成功！txId: \\nこのtxIdをコピーし、「2. デポジット反映」に入力してください。;
+      document.getElementById('deposit-txid-input').value = sendData.txId;
+    } else {
+      msgEl.innerText = 送金失敗: \;
+    }
+  } catch (e) {
+    msgEl.innerText = 'KCサーバーとの通信に失敗しました。';
+  }
+}
+
+// 2. ゲームサーバーへデポジット反映リクエスト (デポジットステップ2)
+async function handleClaimDeposit() {
+  const txId = document.getElementById('deposit-txid-input').value.trim();
+  const msgEl = document.getElementById('deposit-msg');
+
+  if (!txId) {
+    alert('取引ID (txId) を入力してください');
+    return;
+  }
+
+  msgEl.innerText = 'デポジット反映中...';
+
+  try {
+    const res = await fetch(\/deposit, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        txId: txId
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateUserStatus();
+    } else {
+      msgEl.innerText = エラー: \;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+// 3. 出金処理
+async function handleWithdraw() {
+  const amount = parseFloat(document.getElementById('withdraw-amount-input').value);
+  const msgEl = document.getElementById('withdraw-msg');
+  if (isNaN(amount) || amount <= 0) {
+    alert('出金額を正しく入力してください');
+    return;
+  }
+
+  msgEl.innerText = '出金処理を実行中...';
+
+  try {
+    const res = await fetch(\/withdraw, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        amount: amount
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateUserStatus();
+    } else {
+      msgEl.innerText = 出金エラー: \;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}

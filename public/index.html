@@ -1,0 +1,167 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Take Money - KC投資バトル</title>
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- TweetNaCl libraries for browser signing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+</head>
+<body>
+
+  <!-- ウォレット接続・登録用モーダル -->
+  <div id="login-modal" class="modal">
+    <div class="modal-content glass">
+      <h2>🪙 Take Money へようこそ</h2>
+      <p>Fiction Money (KC) と連携して、土地の買収と株式投資で稼ぐシミュレーションゲームです。</p>
+      
+      <div class="input-group">
+        <label for="nickname-input">ニックネーム</label>
+        <input type="text" id="nickname-input" placeholder="プレイヤー名を入力..." maxlength="15">
+      </div>
+
+      <div class="input-group">
+        <label for="private-key-input">秘密鍵 (Base64) - ログインまたは新規生成</label>
+        <input type="password" id="private-key-input" placeholder="既存の秘密鍵を入力、空欄で新規生成...">
+      </div>
+      
+      <button id="btn-login" class="btn btn-primary">ウォレットを接続して参入</button>
+      <div id="login-error" class="error-msg"></div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- ヘッダー -->
+    <header class="glass">
+      <div class="logo">
+        <span class="logo-icon">💸</span>
+        <h1>Take Money</h1>
+      </div>
+      
+      <div class="user-bar">
+        <div class="status-card">
+          <span class="label">PLAYER</span>
+          <span id="display-nickname" class="val">---</span>
+        </div>
+        <div class="status-card">
+          <span class="label">ADDRESS</span>
+          <span id="display-address" class="val">---</span>
+        </div>
+        <div class="status-card highlight-cash">
+          <span class="label">CASH (ゲーム内)</span>
+          <span id="display-cash" class="val">0.00</span> <span class="unit">Cash</span>
+        </div>
+        <div class="status-card highlight-kc">
+          <span class="label">WALLET (KC)</span>
+          <span id="display-kc-balance" class="val">0.00</span> <span class="unit">KC</span>
+        </div>
+        <button id="btn-disconnect" class="btn btn-danger">切断</button>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main>
+      <!-- 左：共有不動産マップ -->
+      <section class="map-section glass">
+        <div class="section-header">
+          <h2>🗺️ 共有不動産マップ (早い者勝ち＆強制買収)</h2>
+          <p>誰かが購入した土地は、購入価格の 1.5 倍を支払うことで強制的に買収できます。</p>
+        </div>
+        
+        <div id="grid-map" class="grid-map">
+          <!-- JSで16区画のマスを生成 -->
+        </div>
+
+        <!-- 土地詳細パネル -->
+        <div id="land-detail-panel" class="detail-panel glass-dark hidden">
+          <h3 id="land-name">土地名</h3>
+          <div class="detail-grid">
+            <div><strong>所有者:</strong> <span id="land-owner">---</span></div>
+            <div><strong>位置:</strong> <span id="land-coordinate">---</span></div>
+            <div><strong>基準価格:</strong> <span id="land-base-price">0</span> Cash</div>
+            <div><strong>直近購入価格:</strong> <span id="land-purchase-price">0</span> Cash</div>
+            <div><strong>秒間家賃利回り:</strong> <span id="land-rent">0</span> Cash</div>
+          </div>
+          <div class="panel-actions">
+            <button id="btn-buy-land" class="btn btn-success w-full">土地を新規購入</button>
+            <button id="btn-takeover-land" class="btn btn-warning w-full">土地を強制買収 (1.5倍額)</button>
+          </div>
+          <p id="land-action-msg" class="info-msg"></p>
+        </div>
+      </section>
+
+      <!-- 中：株式取引ボード -->
+      <section class="stocks-section glass">
+        <div class="section-header">
+          <h2>📈 株式取引所 (配当＆キャピタルゲイン)</h2>
+          <p>30秒ごとに株価が変動し、配当金が自動で支払われます。</p>
+        </div>
+        
+        <div id="stock-list" class="stock-list">
+          <!-- JSで株式銘柄カードを生成 -->
+        </div>
+
+        <!-- 株式取引フォーム -->
+        <div id="stock-trade-panel" class="detail-panel glass-dark hidden">
+          <h3 id="trade-stock-name">企業名 (SYMBOL)</h3>
+          <p>現在価格: <span id="trade-stock-price">0</span> Cash | 保有数: <span id="trade-user-qty">0</span> 株</p>
+          <div class="trade-form">
+            <input type="number" id="trade-qty-input" min="1" value="10">
+            <button id="btn-buy-stock" class="btn btn-primary">買付</button>
+            <button id="btn-sell-stock" class="btn btn-danger">売却</button>
+          </div>
+          <p id="stock-action-msg" class="info-msg"></p>
+        </div>
+      </section>
+
+      <!-- 右：ウォレット連携＆ゲームログ -->
+      <section class="wallet-log-section">
+        <!-- デポジット・出金パネル -->
+        <div class="wallet-console glass">
+          <h2>🔌 ウォレット送受金 (KC ⇔ Cash)</h2>
+          <div class="console-box">
+            <h3>入金 (KC → Cashデポジット)</h3>
+            <p class="desc">1. KCウォレットからゲーム運営口座へ送金します。</p>
+            <div class="form-row">
+              <input type="number" id="deposit-amount-input" placeholder="送金額..." min="1" value="100">
+              <button id="btn-send-kc-to-admin" class="btn btn-primary">1. KCを送金</button>
+            </div>
+            <p class="desc">2. 送金完了後、取引ID (txId) を送信して残高を反映します。</p>
+            <div class="form-row">
+              <input type="text" id="deposit-txid-input" placeholder="txIdを入力...">
+              <button id="btn-claim-deposit" class="btn btn-success">2. デポジット反映</button>
+            </div>
+            <p id="deposit-msg" class="info-msg"></p>
+          </div>
+
+          <div class="console-box">
+            <h3>出金 (Cash → ウォレットへ回収)</h3>
+            <p class="desc">ゲーム内現金をKCウォレットに直接送金して引き出します。</p>
+            <div class="form-row">
+              <input type="number" id="withdraw-amount-input" placeholder="出金額..." min="1">
+              <button id="btn-withdraw" class="btn btn-warning">出金実行</button>
+            </div>
+            <p id="withdraw-msg" class="info-msg"></p>
+          </div>
+        </div>
+
+        <!-- リアルタイムログ -->
+        <div class="log-console glass">
+          <h2>📢 投資速報・ゲームニュース</h2>
+          <div id="log-list" class="log-list">
+            <!-- リアルタイムログを表示 -->
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
