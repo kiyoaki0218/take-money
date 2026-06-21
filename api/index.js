@@ -13,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 // 静的ファイルの提供
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // --- 運営ウォレットの設定 ---
 let adminKeyPair = null;
@@ -122,6 +122,7 @@ app.post('/api/game/register', async (req, res) => {
 
     res.json({ success: true, user: newUser, message: 'アカウントを新規作成しました（初期資金 1000 Cashを付与）' });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -167,6 +168,7 @@ app.get('/api/game/status/:address', async (req, res) => {
 
     res.json({ success: true, user, lands, stocks: formattedStocks });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -193,6 +195,7 @@ app.get('/api/game/lands', async (req, res) => {
 
     res.json({ success: true, lands: formattedLands });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -234,6 +237,7 @@ app.post('/api/game/lands/buy', async (req, res) => {
 
     res.json({ success: true, message: '土地の購入が完了しました' });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -282,6 +286,7 @@ app.post('/api/game/lands/takeover', async (req, res) => {
 
     res.json({ success: true, message: \を\ Cashで買収しました！ });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -298,6 +303,7 @@ app.get('/api/game/stocks', async (req, res) => {
     }));
     res.json({ success: true, stocks: formatted });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -383,6 +389,7 @@ app.post('/api/game/stocks/trade', async (req, res) => {
 
     res.json({ success: true, message: '株式取引が完了しました' });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -399,6 +406,7 @@ app.get('/api/game/logs', async (req, res) => {
     if (err) throw err;
     res.json({ success: true, logs });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -451,6 +459,7 @@ app.post('/api/game/deposit', async (req, res) => {
 
     res.json({ success: true, amount, message: \ KC をデポジット反映しました });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -511,6 +520,7 @@ app.post('/api/game/withdraw', async (req, res) => {
 
     res.json({ success: true, amount: withdrawAmount, message: '出金が完了しました！' });
   } catch (e) {
+    console.error("API Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
