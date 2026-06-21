@@ -76,7 +76,7 @@ async function handleLogin() {
 
   // サーバー登録
   try {
-    const res = await fetch(\/register, {
+    const res = await fetch(`${API_BASE}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -138,13 +138,13 @@ function updateAllData() {
 // ユーザーステータス（残高含む）取得
 async function updateUserStatus() {
   try {
-    const res = await fetch(\/status/\);
+    const res = await fetch(`${API_BASE}/status/${userAddress}`);
     const data = await res.json();
     if (data.success) {
       document.getElementById('display-cash').innerText = data.user.balance_cash.toFixed(2);
       
       // KCサーバーからウォレット残高を取得
-      const kcRes = await fetch(\/api/balance/\);
+      const kcRes = await fetch(`${KC_SERVER}/api/balance/${userAddress}`);
       if (kcRes.ok) {
         const kcData = await kcRes.json();
         document.getElementById('display-kc-balance').innerText = kcData.balance.toFixed(2);
@@ -156,7 +156,7 @@ async function updateUserStatus() {
 // 共有土地マップ更新
 async function updateLandsMap() {
   try {
-    const res = await fetch(\/lands);
+    const res = await fetch(`${API_BASE}/lands`);
     const data = await res.json();
     if (!data.success) return;
 
@@ -178,12 +178,12 @@ async function updateLandsMap() {
         const cell = document.createElement('div');
         cell.className = 'map-cell';
         cell.dataset.id = land.id;
-        cell.innerHTML = 
-          <span class="cell-coords">\</span>
-          <span class="cell-name">\</span>
+        cell.innerHTML = `
+          <span class="cell-coords">${land.coordinate}</span>
+          <span class="cell-name">${land.name}</span>
           <span class="cell-owner"></span>
           <span class="cell-price"></span>
-        ;
+        `;
         cell.addEventListener('click', () => selectLand(land.id));
         grid.appendChild(cell);
       });
@@ -191,7 +191,7 @@ async function updateLandsMap() {
 
     // 各マスの状態更新
     lands.forEach(land => {
-      const cell = grid.querySelector([data-id="\"]);
+      const cell = grid.querySelector(`[data-id="${land.id}"]`);
       if (!cell) return;
 
       const ownerSpan = cell.querySelector('.cell-owner');
@@ -205,11 +205,11 @@ async function updateLandsMap() {
         } else {
           ownerSpan.innerText = land.owner_name || land.owner_address.slice(0, 8);
         }
-        priceSpan.innerText = 買収: \ Cash;
+        priceSpan.innerText = `買収: ${land.purchase_price ? (land.purchase_price * 1.5).toFixed(0) : ''} Cash`;
       } else {
         cell.className = 'map-cell';
         ownerSpan.innerText = '空き地';
-        priceSpan.innerText = 定価: \ Cash;
+        priceSpan.innerText = `定価: ${land.base_price} Cash`;
       }
 
       if (selectedLandId === land.id) {
@@ -245,7 +245,7 @@ function selectLand(id) {
   const cells = document.querySelectorAll('.map-cell');
   cells.forEach(c => c.classList.remove('selected'));
   
-  const targetCell = document.querySelector([data-id="\"]);
+  const targetCell = document.querySelector(`[data-id="${id}"]`);
   if (targetCell) targetCell.classList.add('selected');
 
   document.getElementById('land-detail-panel').classList.remove('hidden');
@@ -260,7 +260,7 @@ async function handleLandAction(actionType) {
   msgEl.innerText = '処理中...';
 
   try {
-    const res = await fetch(\\, {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -274,7 +274,7 @@ async function handleLandAction(actionType) {
       updateLandsMap();
       updateUserStatus();
     } else {
-      msgEl.innerText = エラー: \;
+      msgEl.innerText = `エラー: ${data.error}`;
     }
   } catch (e) {
     msgEl.innerText = '通信エラーが発生しました';
@@ -284,12 +284,12 @@ async function handleLandAction(actionType) {
 // 株式リスト更新
 async function updateStocksList() {
   try {
-    const res = await fetch(\/stocks);
+    const res = await fetch(`${API_BASE}/stocks`);
     const data = await res.json();
     if (!data.success) return;
 
     // 保有株数の把握のため、ユーザーステータスも同時に参照
-    const userRes = await fetch(\/status/\);
+    const userRes = await fetch(`${API_BASE}/status/${userAddress}`);
     const userData = await userRes.json();
     const myHoldings = userData.success ? userData.stocks : [];
 
@@ -302,16 +302,16 @@ async function updateStocksList() {
         const card = document.createElement('div');
         card.className = 'stock-card';
         card.dataset.id = stock.id;
-        card.innerHTML = 
+        card.innerHTML = `
           <div class="stock-info">
-            <span class="stock-symbol">\</span>
-            <span class="stock-name">\</span>
+            <span class="stock-symbol">${stock.symbol}</span>
+            <span class="stock-name">${stock.company_name}</span>
           </div>
           <div class="stock-values">
-            <div class="stock-price">\ Cash</div>
-            <div class="stock-div">配当: \%</div>
+            <div class="stock-price">${parseFloat(stock.current_price).toFixed(2)} Cash</div>
+            <div class="stock-div">配当: ${parseFloat(stock.dividend_yield).toFixed(2)}%</div>
           </div>
-        ;
+        `;
         card.addEventListener('click', () => selectStock(stock.id));
         list.appendChild(card);
       });
@@ -319,18 +319,18 @@ async function updateStocksList() {
 
     // 各カードの状態更新
     data.stocks.forEach(stock => {
-      const card = list.querySelector([data-id="\"]);
+      const card = list.querySelector(`[data-id="${stock.id}"]`);
       if (!card) return;
 
       const priceDiv = card.querySelector('.stock-price');
-      priceDiv.innerText = \ Cash;
+      priceDiv.innerText = `${parseFloat(stock.current_price).toFixed(2)} Cash`;
 
       const holding = myHoldings.find(h => h.id === stock.id);
       const heldQty = holding ? holding.quantity : 0;
 
       if (selectedStockId === stock.id) {
         card.classList.add('selected');
-        document.getElementById('trade-stock-name').innerText = \ (\);
+        document.getElementById('trade-stock-name').innerText = `${stock.company_name} (${stock.symbol})`;
         document.getElementById('trade-stock-price').innerText = stock.current_price.toFixed(2);
         document.getElementById('trade-user-qty').innerText = heldQty;
       } else {
@@ -346,7 +346,7 @@ function selectStock(id) {
   const cards = document.querySelectorAll('.stock-card');
   cards.forEach(c => c.classList.remove('selected'));
   
-  const targetCard = document.querySelector([data-id="\"]);
+  const targetCard = document.querySelector(`[data-id="${id}"]`);
   if (targetCard) targetCard.classList.add('selected');
 
   document.getElementById('stock-trade-panel').classList.remove('hidden');
@@ -366,7 +366,7 @@ async function handleStockAction(type) {
   msgEl.innerText = '取引中...';
 
   try {
-    const res = await fetch(\/stocks/trade, {
+    const res = await fetch(`${API_BASE}/stocks/trade`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -382,7 +382,7 @@ async function handleStockAction(type) {
       updateStocksList();
       updateUserStatus();
     } else {
-      msgEl.innerText = エラー: \;
+      msgEl.innerText = `エラー: ${data.error}`;
     }
   } catch (e) {
     msgEl.innerText = '通信エラーが発生しました';
@@ -392,7 +392,7 @@ async function handleStockAction(type) {
 // ニュースログの更新
 async function updateLogs() {
   try {
-    const res = await fetch(\/logs);
+    const res = await fetch(`${API_BASE}/logs`);
     const data = await res.json();
     if (!data.success) return;
 
@@ -401,7 +401,7 @@ async function updateLogs() {
     data.logs.forEach(log => {
       const item = document.createElement('div');
       item.className = 'log-item';
-      item.innerText = [\] \;
+      item.innerText = `[${log.id}] ${log.message}`;
       list.appendChild(item);
     });
   } catch (e) {}
@@ -437,10 +437,10 @@ async function handleKCSendToAdmin() {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     adminWalletAddress = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 
-    msgEl.innerText = KCサーバーから送信元のnonceを取得中...;
+    msgEl.innerText = 'KCサーバーから送信元のnonceを取得中...';
 
     // 1. KCサーバーから現在の送信者(ユーザー)のnonceを取得
-    const balRes = await fetch(\/api/balance/\);
+    const balRes = await fetch(`${KC_SERVER}/api/balance/${userAddress}`);
     if (!balRes.ok) {
       msgEl.innerText = 'KCサーバーにアカウントが見つかりません。先にKCサーバーで招待コードを使用してウォレットを登録してください。';
       return;
@@ -451,7 +451,7 @@ async function handleKCSendToAdmin() {
     msgEl.innerText = 'トランザクションに署名中...';
 
     // 2. 署名の作成 (from:to:amount:nonce)
-    const message = \:\:\:\;
+    const message = `${userAddress}:${adminWalletAddress}:${amount}:${nonce}`;
     const msgBytes = naclUtil.decodeUTF8(message);
     const signatureBytes = nacl.sign.detached(msgBytes, userSecretKey);
     const signature = naclUtil.encodeBase64(signatureBytes);
@@ -459,7 +459,7 @@ async function handleKCSendToAdmin() {
     msgEl.innerText = 'KCを送金中...';
 
     // 3. KCサーバーへ直接送金リクエスト
-    const sendRes = await fetch(\/api/send, {
+    const sendRes = await fetch(`${KC_SERVER}/api/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -474,10 +474,10 @@ async function handleKCSendToAdmin() {
 
     const sendData = await sendRes.json();
     if (sendData.success) {
-      msgEl.innerText = 送金成功！txId: \\nこのtxIdをコピーし、「2. デポジット反映」に入力してください。;
+      msgEl.innerText = `送金成功！txId: ${sendData.txId}\nこのtxIdをコピーし、「2. デポジット反映」に入力してください。`;
       document.getElementById('deposit-txid-input').value = sendData.txId;
     } else {
-      msgEl.innerText = 送金失敗: \;
+      msgEl.innerText = `送金失敗: ${sendData.error}`;
     }
   } catch (e) {
     msgEl.innerText = 'KCサーバーとの通信に失敗しました。';
@@ -497,7 +497,7 @@ async function handleClaimDeposit() {
   msgEl.innerText = 'デポジット反映中...';
 
   try {
-    const res = await fetch(\/deposit, {
+    const res = await fetch(`${API_BASE}/deposit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -510,7 +510,7 @@ async function handleClaimDeposit() {
       msgEl.innerText = data.message;
       updateUserStatus();
     } else {
-      msgEl.innerText = エラー: \;
+      msgEl.innerText = `エラー: ${data.error}`;
     }
   } catch (e) {
     msgEl.innerText = '通信エラーが発生しました';
@@ -529,7 +529,7 @@ async function handleWithdraw() {
   msgEl.innerText = '出金処理を実行中...';
 
   try {
-    const res = await fetch(\/withdraw, {
+    const res = await fetch(`${API_BASE}/withdraw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -542,7 +542,7 @@ async function handleWithdraw() {
       msgEl.innerText = data.message;
       updateUserStatus();
     } else {
-      msgEl.innerText = 出金エラー: \;
+      msgEl.innerText = `出金エラー: ${data.error}`;
     }
   } catch (e) {
     msgEl.innerText = '通信エラーが発生しました';
