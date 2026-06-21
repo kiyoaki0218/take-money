@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const nacl = require('tweetnacl');
 const naclUtil = require('tweetnacl-util');
-const db = require('../db'); // 親ディレクトリの db.js を指定
+const db = require('../db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,13 +12,14 @@ const KC_SERVER_URL = process.env.KC_SERVER_URL || 'http://localhost:3000';
 app.use(cors());
 app.use(express.json());
 
-// 静的ファイルの提供（ローカル動作用。Vercelではpublicが自動で配信される）
+// 静的ファイルの提供
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // --- 運営ウォレットの設定 ---
 let adminKeyPair = null;
 let adminAddress = '';
 let adminPublicKeyBase64 = '';
+let isInitialized = false;
 
 async function initAdminWallet() {
   try {
@@ -35,7 +36,7 @@ async function initAdminWallet() {
     
     console.log(\n  🎮 Game Admin Wallet Address: \);
     
-    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+    // ネイティブ fetch の使用
     const registerRes = await fetch(\/api/register, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -50,6 +51,17 @@ async function initAdminWallet() {
     console.log(  ⚠️ KC Server connection failed. Run Fiction Money server on port 3000 to enable full integration.);
   }
 }
+
+// サーバーレス用の遅延初期化ミドルウェア
+async function ensureInit(req, res, next) {
+  if (!isInitialized) {
+    await initAdminWallet();
+    isInitialized = true;
+  }
+  next();
+}
+
+app.use('/api/game', ensureInit);
 
 // 署名検証とアドレス導出
 function verifySignature(message, signature, publicKey) {
@@ -399,7 +411,6 @@ app.post('/api/game/deposit', async (req, res) => {
   }
 
   try {
-    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
     const txRes = await fetch(\/api/transactions/\);
     if (!txRes.ok) {
       return res.status(400).json({ success: false, error: 'KC取引履歴の取得に失敗しました' });
@@ -461,7 +472,6 @@ app.post('/api/game/withdraw', async (req, res) => {
       return res.status(400).json({ success: false, error: '残高が不足しています' });
     }
 
-    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
     const balRes = await fetch(\/api/balance/\);
     if (!balRes.ok) {
       return res.status(500).json({ success: false, error: 'KCサーバーへの接続に失敗しました' });
