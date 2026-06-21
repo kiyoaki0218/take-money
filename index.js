@@ -590,10 +590,12 @@ function startSimulators() {
 }
 
 if (require.main === module) {
-  // KC Proxy Routes
+  
+
+// KC Proxy Routes
 app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
   try {
-    const balRes = await fetch(${KC_SERVER_URL}/api/balance/);
+    const balRes = await fetch(`${KC_SERVER_URL}/api/balance/${req.params.address}`);
     if (!balRes.ok) return res.status(balRes.status).send(await balRes.text());
     res.json(await balRes.json());
   } catch (e) {
@@ -603,7 +605,7 @@ app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
 
 app.post('/api/game/kc-proxy/send', async (req, res) => {
   try {
-    const sendRes = await fetch(${KC_SERVER_URL}/api/send, {
+    const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
@@ -615,14 +617,6 @@ app.post('/api/game/kc-proxy/send', async (req, res) => {
   }
 });
 
-app.listen(PORT, async () => {
-    console.log(`\n  🎮 Take Money ゲームサーバー準備完了 (Port: ${PORT})`);
-    await initAdminWallet();
-    startSimulators();
-  });
-}
-
-module.exports = app;
-
-
-
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
