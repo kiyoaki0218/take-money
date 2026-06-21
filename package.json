@@ -1,7 +1,6 @@
 {
     "name":  "take-money",
     "version":  "1.0.0",
-    "main":  "api/index.js",
     "scripts":  {
                     "dev":  "node api/index.js"
                 },
