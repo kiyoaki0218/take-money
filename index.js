@@ -7,7 +7,7 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const KC_SERVER_URL = process.env.KC_SERVER_URL || 'https://kc-server.vercel.app';
+const KC_SERVER_URL = process.env.KC_SERVER_URL || 'http://127.0.0.1:3000';
 
 app.use(cors());
 app.use(express.json());
@@ -624,4 +624,5 @@ app.listen(PORT, () => {
 
 
 module.exports = app;
+
 

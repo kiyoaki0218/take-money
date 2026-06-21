@@ -143,7 +143,7 @@ async function updateUserStatus() {
       document.getElementById('display-cash').innerText = data.user.balance_cash.toFixed(2);
       
       // KCサーバーからウォレット残高を取得
-      const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}`);
+      const kcRes = await fetch(`http://127.0.0.1:3000/api/balance/${userAddress}`);
       if (kcRes.ok) {
         const kcData = await kcRes.json();
         document.getElementById('display-kc-balance').innerText = kcData.balance.toFixed(2);
@@ -439,7 +439,7 @@ async function handleKCSendToAdmin() {
     msgEl.innerText = 'KCサーバーから送信元のnonceを取得中...';
 
     // 1. KCサーバーから現在の送信者(ユーザー)のnonceを取得
-    const balRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}`);
+    const balRes = await fetch(`http://127.0.0.1:3000/api/balance/${userAddress}`);
     if (!balRes.ok) {
       msgEl.innerText = 'KCサーバーにアカウントが見つかりません。先にKCサーバーで招待コードを使用してウォレットを登録してください。';
       return;
@@ -458,7 +458,7 @@ async function handleKCSendToAdmin() {
     msgEl.innerText = 'KCを送金中...';
 
     // 3. KCサーバーへ直接送金リクエスト
-    const sendRes = await fetch(`${API_BASE}/kc-proxy/send`, {
+    const sendRes = await fetch(`http://127.0.0.1:3000/api/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -547,5 +547,6 @@ async function handleWithdraw() {
     msgEl.innerText = '通信エラーが発生しました';
   }
 }
+
 
 
