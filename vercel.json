@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/api/game/:path*",
-      "destination": "/api/index"
-    }
-  ]
-}

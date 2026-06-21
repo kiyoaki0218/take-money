@@ -12,7 +12,7 @@ const KC_SERVER_URL = process.env.KC_SERVER_URL || 'http://localhost:3000';
 app.use(cors());
 app.use(express.json());
 
-// app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(__dirname));
 
 // --- 運営ウォレットの設定 ---
 let adminKeyPair = null;
@@ -598,3 +598,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+
