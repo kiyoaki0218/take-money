@@ -20,6 +20,7 @@ function setupEventListeners() {
   // 土地アクション
   document.getElementById('btn-buy-land').addEventListener('click', () => handleLandAction('buy'));
   document.getElementById('btn-takeover-land').addEventListener('click', () => handleLandAction('takeover'));
+  document.getElementById('btn-levelup-land').addEventListener('click', handleLandLevelUp);
 
   // 株式アクション
   document.getElementById('btn-buy-stock').addEventListener('click', () => handleStockAction('buy'));
@@ -180,6 +181,7 @@ async function updateLandsMap() {
         cell.innerHTML = `
           <span class="cell-coords">${land.coordinate}</span>
           <span class="cell-name">${land.name}</span>
+          <span class="cell-level"></span>
           <span class="cell-owner"></span>
           <span class="cell-price"></span>
         `;
@@ -195,9 +197,24 @@ async function updateLandsMap() {
 
       const ownerSpan = cell.querySelector('.cell-owner');
       const priceSpan = cell.querySelector('.cell-price');
+      const levelSpan = cell.querySelector('.cell-level');
+
+      // 建物レベルの判定
+      let levelText = 'マンション';
+      const rr = parseFloat(land.rent_rate);
+      if (rr <= 0.015) levelText = '🏢 マンション';
+      else if (rr <= 0.035) levelText = '🏢 オフィスビル';
+      else levelText = '🗼 タワマン';
+
+      // 土地タイプの判定 (id%3)
+      const typeNum = land.id % 3;
+      let typeClass = 'land-residential';
+      if (typeNum === 1) typeClass = 'land-commercial';
+      if (typeNum === 2) typeClass = 'land-industrial';
 
       if (land.owner_address) {
-        cell.className = 'map-cell owned';
+        cell.className = `map-cell owned ${typeClass}`;
+        levelSpan.innerText = levelText;
         if (land.owner_address === userAddress) {
           cell.classList.add('my-land');
           ownerSpan.innerText = 'あなた';
@@ -206,7 +223,8 @@ async function updateLandsMap() {
         }
         priceSpan.innerText = `買収: ${land.purchase_price ? (land.purchase_price * 1.5).toFixed(0) : ''} Cash`;
       } else {
-        cell.className = 'map-cell';
+        cell.className = 'map-cell land-empty';
+        levelSpan.innerText = '';
         ownerSpan.innerText = '空き地';
         priceSpan.innerText = `定価: ${land.base_price} Cash`;
       }
@@ -217,21 +235,50 @@ async function updateLandsMap() {
         document.getElementById('land-name').innerText = land.name;
         document.getElementById('land-coordinate').innerText = land.coordinate;
         document.getElementById('land-owner').innerText = land.owner_address === userAddress ? 'あなた' : (land.owner_name || (land.owner_address ? land.owner_address.slice(0, 8) : 'なし'));
+        
+        let levelText = 'マンション';
+        const rr = parseFloat(land.rent_rate);
+        if (rr <= 0.015) levelText = 'マンション';
+        else if (rr <= 0.035) levelText = 'オフィスビル';
+        else levelText = 'タワーマンション';
+        document.getElementById('land-level').innerText = levelText;
+
         document.getElementById('land-base-price').innerText = land.base_price.toFixed(0);
         document.getElementById('land-purchase-price').innerText = land.purchase_price ? land.purchase_price.toFixed(0) : '---';
-        document.getElementById('land-rent').innerText = (land.purchase_price ? land.purchase_price * 0.015 : land.base_price * 0.015).toFixed(1) + '/30秒';
+        document.getElementById('land-rent').innerText = (land.purchase_price ? land.purchase_price * rr : land.base_price * rr).toFixed(1) + '/30秒';
 
-        // ボタンの切り替え
+        const btnBuy = document.getElementById('btn-buy-land');
+        const btnTakeover = document.getElementById('btn-takeover-land');
+        const btnLevelUp = document.getElementById('btn-levelup-land');
+
         if (land.owner_address) {
-          document.getElementById('btn-buy-land').classList.add('hidden');
+          btnBuy.classList.add('hidden');
           if (land.owner_address === userAddress) {
-            document.getElementById('btn-takeover-land').classList.add('hidden');
+            btnTakeover.classList.add('hidden');
+            btnLevelUp.classList.remove('hidden');
+            
+            // レベルに応じたコストの計算
+            if (rr <= 0.015) {
+              const cost = land.base_price * 1.5;
+              btnLevelUp.innerText = `オフィスビルへ改築 (${cost.toFixed(0)} Cash)`;
+              btnLevelUp.disabled = false;
+            } else if (rr <= 0.035) {
+              const cost = land.base_price * 3.0;
+              btnLevelUp.innerText = `タワーマンションへ改築 (${cost.toFixed(0)} Cash)`;
+              btnLevelUp.disabled = false;
+            } else {
+              btnLevelUp.innerText = '最大レベル（タワマン）です';
+              btnLevelUp.disabled = true;
+            }
           } else {
-            document.getElementById('btn-takeover-land').classList.remove('hidden');
+            btnTakeover.classList.remove('hidden');
+            btnLevelUp.classList.add('hidden');
+            btnTakeover.innerText = `強制買収 (${(land.purchase_price * 1.5).toFixed(0)} Cash)`;
           }
         } else {
-          document.getElementById('btn-buy-land').classList.remove('hidden');
-          document.getElementById('btn-takeover-land').classList.add('hidden');
+          btnBuy.classList.remove('hidden');
+          btnTakeover.classList.add('hidden');
+          btnLevelUp.classList.add('hidden');
         }
       }
     });
@@ -260,6 +307,34 @@ async function handleLandAction(actionType) {
 
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        landId: selectedLandId
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = `エラー: ${data.error}`;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+// 土地のレベルアップ実行
+async function handleLandLevelUp() {
+  if (!selectedLandId) return;
+  const msgEl = document.getElementById('land-action-msg');
+  msgEl.innerText = '改築中...';
+
+  try {
+    const res = await fetch(`${API_BASE}/lands/levelup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

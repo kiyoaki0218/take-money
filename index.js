@@ -226,7 +226,12 @@ app.post('/api/game/lands/buy', async (req, res) => {
       .update({ owner_address: address, purchase_price: parseFloat(land.base_price) })
       .eq('id', landId);
 
-    const msg = `「${user.nickname}」が「${land.name}」を ${land.base_price} Cash で購入しました！`;
+    const typeNum = land.id % 3;
+    let landType = '住宅地区';
+    if (typeNum === 1) landType = '商業地区';
+    if (typeNum === 2) landType = '工業地区';
+    const landName = `${landType} ${land.coordinate}`;
+    const msg = `「${user.nickname}」が「${landName}」を ${land.base_price} Cash で購入しました！`;
     await db.supabase.from('game_logs').insert([{ message: msg }]);
 
     res.json({ success: true, message: '土地の購入が完了しました' });
@@ -275,12 +280,86 @@ app.post('/api/game/lands/takeover', async (req, res) => {
       .update({ owner_address: address, purchase_price: takeoverPrice })
       .eq('id', landId);
 
-    const msg = `🔥「${user.nickname}」が「${prevOwner.nickname}」から「${land.name}」を ${takeoverPrice} Cash で強制買収しました！`;
+    const typeNum = land.id % 3;
+    let landType = '住宅地区';
+    if (typeNum === 1) landType = '商業地区';
+    if (typeNum === 2) landType = '工業地区';
+    const landName = `${landType} ${land.coordinate}`;
+    const msg = `🔥「${user.nickname}」が「${prevOwner.nickname}」から「${landName}」を ${takeoverPrice} Cash で強制買収しました！`;
     await db.supabase.from('game_logs').insert([{ message: msg }]);
 
-    res.json({ success: true, message: `${land.name}を${takeoverPrice} Cashで買収しました！` });
+    res.json({ success: true, message: `${landName}を${takeoverPrice} Cashで買収しました！` });
   } catch (e) {
     console.error("Lands Takeover Error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 5.5. 土地レベルアップ
+app.post('/api/game/lands/levelup', async (req, res) => {
+  const { address, landId } = req.body;
+  try {
+    const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
+    const { data: land } = await db.supabase.from('lands').select('*').eq('id', landId).single();
+
+    if (!user || !land) {
+      return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
+    }
+    if (land.owner_address !== address) {
+      return res.status(400).json({ success: false, error: '自分が所有している土地以外はレベルアップできません' });
+    }
+
+    const currentRentRate = parseFloat(land.rent_rate);
+    let nextLevel = 1;
+    let cost = 0;
+    let nextRentRate = 0.015;
+    let levelName = 'マンション';
+
+    if (currentRentRate <= 0.015) {
+      nextLevel = 2;
+      cost = parseFloat(land.base_price) * 1.5;
+      nextRentRate = 0.035;
+      levelName = 'オフィスビル';
+    } else if (currentRentRate <= 0.035) {
+      nextLevel = 3;
+      cost = parseFloat(land.base_price) * 3.0;
+      nextRentRate = 0.070;
+      levelName = 'タワーマンション';
+    } else {
+      return res.status(400).json({ success: false, error: '既に最大レベル（タワーマンション）です' });
+    }
+
+    if (parseFloat(user.balance_cash) < cost) {
+      return res.status(400).json({ success: false, error: `レベルアップ資金が不足しています。必要額: ${cost} Cash` });
+    }
+
+    await db.supabase
+      .from('users')
+      .update({ balance_cash: parseFloat(user.balance_cash) - cost })
+      .eq('address', address);
+
+    const newPurchasePrice = (land.purchase_price ? parseFloat(land.purchase_price) : parseFloat(land.base_price)) + cost;
+
+    await db.supabase
+      .from('lands')
+      .update({ 
+        rent_rate: nextRentRate,
+        purchase_price: newPurchasePrice
+      })
+      .eq('id', landId);
+
+    const typeNum = land.id % 3;
+    let landType = '住宅地区';
+    if (typeNum === 1) landType = '商業地区';
+    if (typeNum === 2) landType = '工業地区';
+    const landName = `${landType} ${land.coordinate}`;
+
+    const msg = `🏢「${user.nickname}」が「${landName}」をレベルアップし、[${levelName}] に改築しました！`;
+    await db.supabase.from('game_logs').insert([{ message: msg }]);
+
+    res.json({ success: true, message: `${landName}を${levelName}にレベルアップしました！` });
+  } catch (e) {
+    console.error("Lands Levelup Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });

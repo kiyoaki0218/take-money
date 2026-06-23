@@ -172,47 +172,80 @@ section {
   color: var(--text-secondary);
 }
 
-/* 不動産グリッドマップ */
+/* 不動産グリッドマップ (6x6) */
 .grid-map {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 8px;
   aspect-ratio: 1;
 }
 
 .map-cell {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 12px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s ease-in-out;
   position: relative;
   overflow: hidden;
 }
 
 .map-cell:hover {
-  transform: translateY(-4px);
-  border-color: var(--accent-blue);
-  box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);
+  transform: scale(1.02);
+  filter: brightness(1.2);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
 }
 
-.map-cell.owned {
-  background: rgba(168, 85, 247, 0.08);
-  border-color: rgba(168, 85, 247, 0.3);
+/* 空き地 */
+.map-cell.land-empty {
+  background: #111827;
+  border-color: #374151;
 }
 
+/* 住宅地区 (シアン系) */
+.map-cell.land-residential {
+  background: #0f2b48;
+  border-color: #0ea5e9;
+}
+
+/* 商業地区 (赤系) */
+.map-cell.land-commercial {
+  background: #451225;
+  border-color: #f43f5e;
+}
+
+/* 工業地区 (オレンジ/黄系) */
+.map-cell.land-industrial {
+  background: #3c1e08;
+  border-color: #f97316;
+}
+
+/* 自分が所有する土地 (太いゴールド枠と光彩) */
 .map-cell.my-land {
-  background: rgba(52, 211, 153, 0.08);
-  border-color: rgba(52, 211, 153, 0.3);
+  border: 3px solid #f59e0b !important;
+  box-shadow: inset 0 0 8px rgba(245, 158, 11, 0.3);
 }
 
 .map-cell.selected {
-  outline: 2px solid var(--accent-blue);
+  outline: 3px solid #22c55e;
+  outline-offset: 1px;
+}
+
+.map-cell .cell-level {
+  font-size: 0.65rem;
+  font-weight: bold;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+  align-self: flex-start;
+  text-transform: uppercase;
 }
 
 .map-cell .cell-coords {
@@ -221,10 +254,11 @@ section {
 }
 
 .map-cell .cell-name {
-  font-weight: 600;
-  font-size: 0.8rem;
-  margin-top: 4px;
-  line-height: 1.2;
+  font-weight: 700;
+  font-size: 0.72rem;
+  margin-top: 2px;
+  line-height: 1.1;
+  color: #fff;
 }
 
 .map-cell .cell-owner {
