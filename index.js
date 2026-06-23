@@ -811,7 +811,10 @@ const sendCache = new Map();
 // KC Proxy Routes
 app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
   try {
-    const balRes = await fetch(`${KC_SERVER_URL}/api/balance/${req.params.address}`);
+    const balRes = await fetch(`${KC_SERVER_URL}/api/balance/${req.params.address}?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+    });
     if (balRes.status === 404) {
       return res.json({ balance: 0.0, nonce: 0 });
     }

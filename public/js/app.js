@@ -144,7 +144,7 @@ async function updateUserStatus() {
       document.getElementById('display-cash').innerText = data.user.balance_cash.toFixed(2);
       
       // KCサーバーからウォレット残高を取得
-      const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}`);
+      const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}?t=${Date.now()}`, { cache: 'no-store' });
       if (kcRes.ok) {
         const kcData = await kcRes.json();
         document.getElementById('display-kc-balance').innerText = kcData.balance.toFixed(2);
@@ -564,7 +564,7 @@ async function handleKCSendToAdmin() {
     msgEl.innerText = 'KCサーバーから送信元のnonceを取得中...';
 
     // 1. KCサーバーから現在の送信者(ユーザー)のnonceを取得
-    const balRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}`);
+    const balRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}?t=${Date.now()}`, { cache: 'no-store' });
     if (!balRes.ok) {
       const errData = await balRes.text(); msgEl.innerText = 'KC Server Error: ' + balRes.status + ' - ' + errData + '先にKCサーバーで招待コードを使用してウォレットを登録してください。';
       return;
