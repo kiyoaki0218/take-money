@@ -28,14 +28,13 @@ function setupEventListeners() {
 
   // デポジット・出金アクション
   document.getElementById('btn-send-kc-to-admin').addEventListener('click', handleKCSendToAdmin);
-  document.getElementById('btn-claim-deposit').addEventListener('click', handleClaimDeposit);
   document.getElementById('btn-withdraw').addEventListener('click', handleWithdraw);
 }
 
 // 保存されたキーがあれば自動ログイン
 function autoLoginIfSaved() {
-  const savedSec = localStorage.getItem('tm_secret_key');
-  const savedNick = localStorage.getItem('tm_nickname');
+  const savedSec = localStorage.getItem('kc_secret');
+  const savedNick = localStorage.getItem('kc_nickname');
   if (savedSec && savedNick) {
     document.getElementById('private-key-input').value = savedSec;
     document.getElementById('nickname-input').value = savedNick;
@@ -92,8 +91,8 @@ async function handleLogin() {
     }
 
     // 保存
-    localStorage.setItem('tm_secret_key', privKeyStr);
-    localStorage.setItem('tm_nickname', nickname);
+    localStorage.setItem('kc_secret', privKeyStr);
+    localStorage.setItem('kc_nickname', nickname);
 
     // UI更新
     document.getElementById('login-modal').classList.add('hidden');
@@ -109,8 +108,8 @@ async function handleLogin() {
 
 // 切断処理
 function handleDisconnect() {
-  localStorage.removeItem('tm_secret_key');
-  localStorage.removeItem('tm_nickname');
+  localStorage.removeItem('kc_secret');
+  localStorage.removeItem('kc_nickname');
   window.location.reload();
 }
 
@@ -548,46 +547,33 @@ async function handleKCSendToAdmin() {
 
     const sendData = await sendRes.json();
     if (sendData.success) {
-      msgEl.innerText = `送金成功！txId: ${sendData.txId}\nこのtxIdをコピーし、「2. デポジット反映」に入力してください。`;
-      document.getElementById('deposit-txid-input').value = sendData.txId;
+      msgEl.innerText = `送金成功 (txId: ${sendData.txId})。ゲーム内残高へ自動反映中...`;
+      
+      // 自動デポジット反映の実行
+      try {
+        const claimRes = await fetch(`${API_BASE}/deposit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: userAddress,
+            txId: sendData.txId
+          })
+        });
+        const claimData = await claimRes.json();
+        if (claimData.success) {
+          msgEl.innerText = `🎉 デポジットが完了しました！ ${amount} Cash をゲーム内に反映しました。`;
+          updateUserStatus();
+        } else {
+          msgEl.innerText = `送金は成功しましたが、ゲーム内反映に失敗しました: ${claimData.error}`;
+        }
+      } catch (err) {
+        msgEl.innerText = '送金成功後のゲーム内反映通信でエラーが発生しました。';
+      }
     } else {
       msgEl.innerText = `送金失敗: ${sendData.error}`;
     }
   } catch (e) {
     msgEl.innerText = 'KCサーバーとの通信に失敗しました。';
-  }
-}
-
-// 2. ゲームサーバーへデポジット反映リクエスト (デポジットステップ2)
-async function handleClaimDeposit() {
-  const txId = document.getElementById('deposit-txid-input').value.trim();
-  const msgEl = document.getElementById('deposit-msg');
-
-  if (!txId) {
-    alert('取引ID (txId) を入力してください');
-    return;
-  }
-
-  msgEl.innerText = 'デポジット反映中...';
-
-  try {
-    const res = await fetch(`${API_BASE}/deposit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: userAddress,
-        txId: txId
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      msgEl.innerText = data.message;
-      updateUserStatus();
-    } else {
-      msgEl.innerText = `エラー: ${data.error}`;
-    }
-  } catch (e) {
-    msgEl.innerText = '通信エラーが発生しました';
   }
 }
 

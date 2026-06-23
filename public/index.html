@@ -129,15 +129,10 @@
           <h2>🔌 ウォレット送受金 (KC ⇔ Cash)</h2>
           <div class="console-box">
             <h3>入金 (KC → Cashデポジット)</h3>
-            <p class="desc">1. KCウォレットからゲーム運営口座へ送金します。</p>
+            <p class="desc">KCウォレットからゲーム内へ資金をデポジット（チャージ）します。</p>
             <div class="form-row">
               <input type="number" id="deposit-amount-input" placeholder="送金額..." min="1" value="100">
-              <button id="btn-send-kc-to-admin" class="btn btn-primary">1. KCを送金</button>
-            </div>
-            <p class="desc">2. 送金完了後、取引ID (txId) を送信して残高を反映します。</p>
-            <div class="form-row">
-              <input type="text" id="deposit-txid-input" placeholder="txIdを入力...">
-              <button id="btn-claim-deposit" class="btn btn-success">2. デポジット反映</button>
+              <button id="btn-send-kc-to-admin" class="btn btn-primary">デポジット実行</button>
             </div>
             <p id="deposit-msg" class="info-msg"></p>
           </div>
