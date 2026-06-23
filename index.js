@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const nacl = require('tweetnacl');
@@ -592,6 +592,7 @@ function startSimulators() {
 if (require.main === module) {
   
 
+
 // KC Proxy Routes
 app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
   try {
@@ -617,33 +618,8 @@ app.post('/api/game/kc-proxy/send', async (req, res) => {
   }
 });
 
-// KC Proxy Routes
-app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
-  try {
-    const balRes = await fetch(${KC_SERVER_URL}/api/balance/);
-    if (!balRes.ok) return res.status(balRes.status).send(await balRes.text());
-    res.json(await balRes.json());
-  } catch (e) {
-    res.status(500).json({ error: e.message, attempted_url: KC_SERVER_URL });
-  }
-});
-
-app.post('/api/game/kc-proxy/send', async (req, res) => {
-  try {
-    const sendRes = await fetch(${KC_SERVER_URL}/api/send, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body)
-    });
-    if (!sendRes.ok) return res.status(sendRes.status).send(await sendRes.text());
-    res.json(await sendRes.json());
-  } catch (e) {
-    res.status(500).json({ error: e.message, attempted_url: KC_SERVER_URL });
-  }
-});
-
 app.listen(PORT, () => {
-  console.log(Server is running on port );
+  console.log(`Server is running on port ${PORT}`);
 });
 }
 
