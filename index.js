@@ -805,6 +805,9 @@ function startSimulators() {
   }, 30000);
 }
 
+// 重複送信（Vercelリトライ等）防止用の送金キャッシュ
+const sendCache = new Map();
+
 // KC Proxy Routes
 app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
   try {
@@ -820,14 +823,33 @@ app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
 });
 
 app.post('/api/game/kc-proxy/send', async (req, res) => {
+  const { signature } = req.body;
+  
+  // 15秒以内の同一署名リクエストはキャッシュから返却 (二重送信防止)
+  if (signature && sendCache.has(signature)) {
+    console.log(`[Deduplication] Returning cached response for signature: ${signature.slice(0, 10)}...`);
+    return res.json(sendCache.get(signature));
+  }
+
   try {
     const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
+    
     if (!sendRes.ok) return res.status(sendRes.status).send(await sendRes.text());
-    res.json(await sendRes.json());
+    const data = await sendRes.json();
+    
+    // 成功したレスポンスを一時的にキャッシュ
+    if (signature && data.success) {
+      sendCache.set(signature, data);
+      setTimeout(() => {
+        sendCache.delete(signature);
+      }, 15000);
+    }
+    
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
