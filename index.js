@@ -112,6 +112,20 @@ app.post('/api/game/register', async (req, res) => {
 
     if (insertError) throw insertError;
 
+    // KCサーバーへの自動登録を試みる
+    try {
+      await fetch(`${KC_SERVER_URL}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: publicKey,
+          inviteCode: 'kurekure2026'
+        })
+      });
+    } catch (e) {
+      console.log("KC Server auto-registration failed:", e.message);
+    }
+
     await db.supabase.from('game_logs').insert([{ message: `新規プレイヤー「${nickname}」が参入しました！` }]);
 
     res.json({ success: true, user: newUser, message: 'アカウントを新規作成しました（初期資金 1000 Cashを付与）' });
@@ -676,6 +690,9 @@ if (require.main === module) {
 app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
   try {
     const balRes = await fetch(`${KC_SERVER_URL}/api/balance/${req.params.address}`);
+    if (balRes.status === 404) {
+      return res.json({ balance: 0.0, nonce: 0 });
+    }
     if (!balRes.ok) return res.status(balRes.status).send(await balRes.text());
     res.json(await balRes.json());
   } catch (e) {
