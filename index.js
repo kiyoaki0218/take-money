@@ -40,7 +40,7 @@ async function initAdminWallet() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicKey: adminPublicKeyBase64,
-        inviteCode: 'kurekure2026'
+        inviteCode: 'invite0000'
       })
     });
     const regData = await registerRes.json();
@@ -119,7 +119,7 @@ app.post('/api/game/register', async (req, res) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           publicKey: publicKey,
-          inviteCode: 'kurekure2026'
+          inviteCode: 'invite0000'
         })
       });
     } catch (e) {
