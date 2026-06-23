@@ -547,8 +547,12 @@ async function handleKCSendToAdmin() {
 
     const sendData = await sendRes.json();
     if (sendData.success) {
-      msgEl.innerText = `送金成功 (txId: ${sendData.txId})。ゲーム内残高へ自動反映中...`;
+      msgEl.innerText = `送金成功 (txId: ${sendData.txId})。反映を同期中...`;
       
+      // KCサーバー側の書き込み・インデックス反映のタイムラグを吸収するため1.5秒待機
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      msgEl.innerText = `送金成功。ゲーム内残高へ反映中...`;
+
       // 自動デポジット反映の実行
       try {
         const claimRes = await fetch(`${API_BASE}/deposit`, {
