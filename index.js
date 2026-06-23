@@ -758,10 +758,6 @@ function startSimulators() {
   }, 30000);
 }
 
-if (require.main === module) {
-  
-
-
 // KC Proxy Routes
 app.get('/api/game/kc-proxy/balance/:address', async (req, res) => {
   try {
@@ -790,9 +786,10 @@ app.post('/api/game/kc-proxy/send', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
 }
 
 module.exports = app;
