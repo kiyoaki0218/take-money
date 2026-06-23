@@ -21,6 +21,7 @@ function setupEventListeners() {
   document.getElementById('btn-buy-land').addEventListener('click', () => handleLandAction('buy'));
   document.getElementById('btn-takeover-land').addEventListener('click', () => handleLandAction('takeover'));
   document.getElementById('btn-levelup-land').addEventListener('click', handleLandLevelUp);
+  document.getElementById('btn-sell-land').addEventListener('click', handleLandSell);
 
   // 株式アクション
   document.getElementById('btn-buy-stock').addEventListener('click', () => handleStockAction('buy'));
@@ -249,13 +250,20 @@ async function updateLandsMap() {
         const btnBuy = document.getElementById('btn-buy-land');
         const btnTakeover = document.getElementById('btn-takeover-land');
         const btnLevelUp = document.getElementById('btn-levelup-land');
+        const btnSell = document.getElementById('btn-sell-land');
 
         if (land.owner_address) {
           btnBuy.classList.add('hidden');
           if (land.owner_address === userAddress) {
             btnTakeover.classList.add('hidden');
             btnLevelUp.classList.remove('hidden');
+            btnSell.classList.remove('hidden');
             
+            // 売却額の算出（購入価格の80%）
+            const purchasePrice = land.purchase_price || land.base_price;
+            const sellPrice = Math.round(purchasePrice * 0.8);
+            btnSell.innerText = `土地を売却 (${sellPrice} Cash回収)`;
+
             // レベルに応じたコストの計算
             if (rr <= 0.015) {
               const cost = land.base_price * 1.5;
@@ -272,12 +280,14 @@ async function updateLandsMap() {
           } else {
             btnTakeover.classList.remove('hidden');
             btnLevelUp.classList.add('hidden');
+            btnSell.classList.add('hidden');
             btnTakeover.innerText = `強制買収 (${(land.purchase_price * 1.5).toFixed(0)} Cash)`;
           }
         } else {
           btnBuy.classList.remove('hidden');
           btnTakeover.classList.add('hidden');
           btnLevelUp.classList.add('hidden');
+          btnSell.classList.add('hidden');
         }
       }
     });
@@ -318,6 +328,42 @@ async function handleLandAction(actionType) {
       msgEl.innerText = data.message;
       updateLandsMap();
       updateUserStatus();
+    } else {
+      msgEl.innerText = `エラー: ${data.error}`;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+// 土地の売却実行
+async function handleLandSell() {
+  if (!selectedLandId) return;
+  
+  if (!confirm('本当にこの土地を国へ売却しますか？\n(購入額の 80% が払い戻され、建物はリセットされます)')) {
+    return;
+  }
+
+  const msgEl = document.getElementById('land-action-msg');
+  msgEl.innerText = '売却処理を実行中...';
+
+  try {
+    const res = await fetch(`${API_BASE}/lands/sell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        landId: selectedLandId
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+      // パネルを一時的に隠す、または更新
+      document.getElementById('land-detail-panel').classList.add('hidden');
+      selectedLandId = null;
     } else {
       msgEl.innerText = `エラー: ${data.error}`;
     }
@@ -489,11 +535,16 @@ let adminWalletAddress = '';
 async function handleKCSendToAdmin() {
   const amount = parseFloat(document.getElementById('deposit-amount-input').value);
   const msgEl = document.getElementById('deposit-msg');
+  const btnSend = document.getElementById('btn-send-kc-to-admin');
+  
   if (isNaN(amount) || amount <= 0) {
     alert('金額を正しく入力してください');
     return;
   }
 
+  // 多重送信防止
+  btnSend.disabled = true;
+  btnSend.innerText = '処理中...';
   msgEl.innerText = '運営ウォレットアドレスを照会中...';
 
   try {
@@ -578,6 +629,9 @@ async function handleKCSendToAdmin() {
     }
   } catch (e) {
     msgEl.innerText = 'KCサーバーとの通信に失敗しました。';
+  } finally {
+    btnSend.disabled = false;
+    btnSend.innerText = 'デポジット実行';
   }
 }
 

@@ -454,6 +454,53 @@ app.post('/api/game/lands/levelup', async (req, res) => {
   }
 });
 
+// 5.6. 土地売却
+app.post('/api/game/lands/sell', async (req, res) => {
+  const { address, landId } = req.body;
+  try {
+    const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
+    const { data: land } = await db.supabase.from('lands').select('*').eq('id', landId).single();
+
+    if (!user || !land) {
+      return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
+    }
+    if (land.owner_address !== address) {
+      return res.status(400).json({ success: false, error: '自分が所有している土地以外は売却できません' });
+    }
+
+    const purchasePrice = parseFloat(land.purchase_price) || parseFloat(land.base_price);
+    const sellPrice = Math.round(purchasePrice * 0.8);
+
+    await db.supabase
+      .from('users')
+      .update({ balance_cash: parseFloat(user.balance_cash) + sellPrice })
+      .eq('address', address);
+
+    await db.supabase
+      .from('lands')
+      .update({ 
+        owner_address: null, 
+        purchase_price: null, 
+        rent_rate: 0.015 
+      })
+      .eq('id', landId);
+
+    const typeNum = land.id % 3;
+    let landType = '住宅地区';
+    if (typeNum === 1) landType = '商業地区';
+    if (typeNum === 2) landType = '工業地区';
+    const landName = `${landType} ${land.coordinate}`;
+
+    const msg = `🏛️「${user.nickname}」が「${landName}」を ${sellPrice} Cash で国に売却（国有化）しました。`;
+    await db.supabase.from('game_logs').insert([{ message: msg }]);
+
+    res.json({ success: true, message: `${landName}を${sellPrice} Cashで売却しました。` });
+  } catch (e) {
+    console.error("Lands Sell Error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 6. 株式一覧取得
 app.get('/api/game/stocks', async (req, res) => {
   try {
