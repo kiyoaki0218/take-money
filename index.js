@@ -40,7 +40,8 @@ async function initAdminWallet() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicKey: adminPublicKeyBase64,
-        inviteCode: 'invite0000'
+        inviteCode: 'invite0000',
+        nickname: 'take-money'
       })
     });
     const regData = await registerRes.json();
