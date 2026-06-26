@@ -244,7 +244,7 @@ app.post('/api/game/lands/buy', async (req, res) => {
     if (recheck.owner_address) {
       const nonce = Date.now().toString();
       const sig = signMessage(`${adminAddress}:${address}:${amountPaid}:${nonce}`);
-      await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: amountPaid, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+      await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: amountPaid, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) });
       return res.status(400).json({ success: false, error: 'タッチの差で購入されました。返金されました。' });
     }
 
@@ -328,7 +328,7 @@ app.post('/api/game/lands/takeover', async (req, res) => {
 
     const nonce = Date.now().toString();
     const sig = signMessage(`${adminAddress}:${land.owner_address}:${takeoverPrice}:${nonce}`);
-    await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: takeoverPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+    await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: takeoverPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) });
 
     await db.supabase.from('lands').update({ owner_address: address, purchase_price: takeoverPrice }).eq('id', landId);
 
@@ -407,7 +407,7 @@ app.post('/api/game/lands/sell', async (req, res) => {
 
     const nonce = Date.now().toString();
     const sig = signMessage(`${adminAddress}:${address}:${sellPrice}:${nonce}`);
-    const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: sellPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+    const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: sellPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) });
     if (!sendRes.ok) return res.status(400).json({ success: false, error: 'KC送金に失敗しました' });
 
     await db.supabase.from('lands').update({ owner_address: null, purchase_price: null, name: '空き地', rent_rate: 0 }).eq('id', landId);
@@ -466,7 +466,7 @@ app.post('/api/game/stocks/trade', async (req, res) => {
       
       const nonce = Date.now().toString();
       const sig = signMessage(`${adminAddress}:${address}:${totalPrice}:${nonce}`);
-      const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: totalPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+      const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: totalPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) });
       if (!sendRes.ok) return res.status(400).json({ success: false, error: 'KC送金に失敗しました' });
     } else {
       return res.status(400).json({ success: false, error: '無効な取引タイプです' });
@@ -515,24 +515,31 @@ app.get('/api/game/logs', async (req, res) => {
 // --- シミュレーター（サーバーレス対応） ---
 app.get('/api/game/simulate', async (req, res) => {
   try {
-    const { data: lastLog } = await db.supabase
-      .from('game_logs')
-      .select('created_at')
-      .like('message', '%【システム】配当と地価の更新%')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (lastLog) {
-      const lastTime = new Date(lastLog.created_at).getTime();
-      const now = Date.now();
-      if (now - lastTime < 170000) { // 170 seconds cooldown
-        return res.json({ success: true, message: "Cooldown active" });
-      }
+    // Cooldown logic (Memory + Temp File)
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const cooldownFile = path.join(os.tmpdir(), 'take_money_cooldown.txt');
+    
+    let lastTime = 0;
+    if (global.lastSimulateTime) {
+      lastTime = global.lastSimulateTime;
+    } else {
+      try {
+        if (fs.existsSync(cooldownFile)) {
+          lastTime = parseInt(fs.readFileSync(cooldownFile, 'utf8'));
+        }
+      } catch(e) {}
     }
 
-    // 実行フラグとして先にログを挿入（多重実行防止）
-    await db.supabase.from('game_logs').insert([{ message: '【システム】配当と地価の更新を完了しました' }]);
+    const now = Date.now();
+    if (now - lastTime < 170000) {
+      return res.json({ success: true, message: "Cooldown active" });
+    }
+
+    global.lastSimulateTime = now;
+    try { fs.writeFileSync(cooldownFile, now.toString(), 'utf8'); } catch(e) {}
+
 
     const { data: stocks } = await db.supabase.from('stocks').select('*');
     if (stocks) {
@@ -564,7 +571,7 @@ app.get('/api/game/simulate', async (req, res) => {
           if (rentIncome > 0) {
             const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
             const sig = signMessage(`${adminAddress}:${land.owner_address}:${rentIncome}:${nonce}`);
-            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: rentIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: rentIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
           }
         }
       }
@@ -580,7 +587,7 @@ app.get('/api/game/simulate', async (req, res) => {
           if (divIncome > 0) {
             const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
             const sig = signMessage(`${adminAddress}:${hold.address}:${divIncome}:${nonce}`);
-            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: divIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: divIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
           }
         }
       }
