@@ -7,6 +7,15 @@
   --font-family: sans-serif;
 }
 
+[data-theme="dark"] {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --border-color: #374151;
+}
+
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -72,7 +81,7 @@ section {
 }
 
 .map-cell {
-  background: #ffffff;
+  background: var(--bg-secondary);
   border: 1px solid #d1d5db; /* Default Unpurchased */
   cursor: pointer;
 }
@@ -133,7 +142,7 @@ section {
 .btn {
   padding: 8px 12px;
   border: 1px solid var(--border-color);
-  background: #ffffff;
+  background: var(--bg-secondary);
   cursor: pointer;
   font-size: 0.9rem;
 }
@@ -194,3 +203,7 @@ input[type="number"], input[type="text"], input[type="password"] {
 .modal-content h2 { font-size: 1.2rem; }
 .modal-content p { font-size: 0.9rem; }
 .input-group label { display: block; font-size: 0.8rem; margin-bottom: 4px; }
+input[type="number"], input[type="text"], input[type="password"] {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}

@@ -478,3 +478,145 @@ async function handleBuild(type) {
     msgEl.innerText = 'エラーが発生しました';
   }
 }
+
+async function handleLandAction(action) {
+  if (!selectedLandId) return;
+  const msgEl = document.getElementById('land-action-msg');
+  msgEl.innerText = '処理中...';
+
+  const land = currentLands.find(l => l.id === selectedLandId);
+  if (!land) return;
+
+  let cost = 0;
+  if (action === 'buy') cost = land.base_price;
+  if (action === 'takeover') cost = (land.purchase_price ? land.purchase_price : land.base_price) * 1.5;
+
+  msgEl.innerText = `KCウォレットから ${cost} KC を送金中...`;
+  const txId = await sendKCToAdmin(cost);
+  if (!txId) {
+    msgEl.innerText = '支払いに失敗しました';
+    return;
+  }
+  msgEl.innerText = '支払い完了。ゲームに反映中...';
+
+  try {
+    const res = await fetch(`${API_BASE}/lands/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: userAddress, landId: selectedLandId, txId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = `エラー: ${data.error}`;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+async function handleLandLevelUp() {
+  if (!selectedLandId) return;
+  const msgEl = document.getElementById('land-action-msg');
+  
+  const land = currentLands.find(l => l.id === selectedLandId);
+  if (!land) return;
+
+  const type = land.type; 
+  const rr = parseFloat(land.rent_rate);
+  const bp = parseFloat(land.base_price);
+  let cost = 0;
+
+  if (type === '住宅地') {
+    if (rr <= 0.015) cost = bp * 1.5;
+    else if (rr <= 0.035) cost = bp * 3.0;
+  } else if (type === '商業地') {
+    if (rr <= 0.020) cost = bp * 2.0;
+    else if (rr <= 0.045) cost = bp * 4.0;
+  } else if (type === '工業地') {
+    if (rr <= 0.025) cost = bp * 2.5;
+    else if (rr <= 0.055) cost = bp * 5.0;
+  }
+  if (cost === 0) {
+    msgEl.innerText = '既に最大レベルです';
+    return;
+  }
+
+  msgEl.innerText = `KCウォレットから ${cost} KC を送金中...`;
+  const txId = await sendKCToAdmin(cost);
+  if (!txId) {
+    msgEl.innerText = '支払いに失敗しました';
+    return;
+  }
+  msgEl.innerText = '支払い完了。ゲームに反映中...';
+
+  try {
+    const res = await fetch(`${API_BASE}/lands/levelup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: userAddress, landId: selectedLandId, txId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = `エラー: ${data.error}`;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+async function handleLandSell() {
+  if (!selectedLandId) return;
+  if (!confirm('本当にこの土地を売却しますか？')) return;
+  const msgEl = document.getElementById('land-action-msg');
+  msgEl.innerText = '処理中...';
+
+  try {
+    const res = await fetch(`${API_BASE}/lands/sell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: userAddress, landId: selectedLandId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = `エラー: ${data.error}`;
+    }
+  } catch (e) {
+    msgEl.innerText = '通信エラーが発生しました';
+  }
+}
+
+// Theme Toggle Logic
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('btn-theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      if (current === 'dark') {
+        document.documentElement.removeAttribute('data-theme');
+        btn.innerText = '🌙 Dark';
+        localStorage.setItem('theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        btn.innerText = '☀️ Light';
+        localStorage.setItem('theme', 'dark');
+      }
+    });
+
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      btn.innerText = '☀️ Light';
+    }
+  }
+});
