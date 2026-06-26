@@ -702,6 +702,5 @@ function updateStockDetailPanel(id) {
   document.getElementById('trade-stock-price').innerHTML = `${price} KC <span class="${priceColorClass}">(${sign}${diff} KC / ${sign}${diffPercent}%)</span>`;
   document.getElementById('trade-user-qty').innerText = qty;
   
-  document.getElementById('btn-buy-stock').onclick = () => handleStockAction('buy');
-  document.getElementById('btn-sell-stock').onclick = () => handleStockAction('sell');
+
 }

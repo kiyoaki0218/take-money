@@ -139,6 +139,8 @@ app.post('/api/game/register', async (req, res) => {
 // 2. ユーザーステータス取得
 app.get('/api/game/status/:address', async (req, res) => {
   const { address } = req.params;
+  // バックグラウンドでシミュレーション自動実行チェック
+  await triggerSimulationSilently();
   try {
     const { data: user, error: userErr } = await db.supabase
       .from('users')
@@ -184,6 +186,7 @@ app.get('/api/game/status/:address', async (req, res) => {
 
 // 3. 土地一覧取得
 app.get('/api/game/lands', async (req, res) => {
+  await triggerSimulationSilently();
   try {
     const { data: lands, error: landsErr } = await db.supabase
       .from('lands')
@@ -421,6 +424,7 @@ app.post('/api/game/lands/sell', async (req, res) => {
 
 // 6. 株式一覧取得
 app.get('/api/game/stocks', async (req, res) => {
+  await triggerSimulationSilently();
   try {
     const { data: stocks, error: err } = await db.supabase.from('stocks').select('*');
     if (err) throw err;
@@ -513,7 +517,8 @@ app.get('/api/game/logs', async (req, res) => {
 
 // --- シミュレーション処理 (Supabase版) ---
 // --- シミュレーター（サーバーレス対応） ---
-app.get('/api/game/simulate', async (req, res) => {
+// シミュレーション実行ロジック
+async function runSimulationInternal() {
   try {
     const { data: systemClock, error: clockErr } = await db.supabase
       .from('users')
@@ -530,7 +535,7 @@ app.get('/api/game/simulate', async (req, res) => {
     const intervalMs = 170000;
 
     if (elapsedMs < intervalMs && systemClock) {
-      return res.json({ success: true, message: "Cooldown active" });
+      return { success: true, message: "Cooldown active" };
     }
 
     let elapsedSteps = Math.floor(elapsedMs / intervalMs);
@@ -625,10 +630,30 @@ app.get('/api/game/simulate', async (req, res) => {
       await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
     }
 
-    res.json({ success: true, message: `Simulation executed (${elapsedSteps} steps)` });
+    return { success: true, message: `Simulation executed (${elapsedSteps} steps)` };
   } catch (e) {
     console.error("Simulation error:", e);
-    res.status(500).json({ success: false, error: e.message });
+    return { success: false, error: e.message };
+  }
+}
+
+// 毎回の主要リクエスト時に自動シミュレーション更新を試みる非同期ミドルウェア的関数
+async function triggerSimulationSilently() {
+  try {
+    // バックグラウンドで非同期実行（レスポンスをブロックしないようにする）
+    runSimulationInternal().catch(err => console.error("Triggered simulation error:", err));
+  } catch (e) {
+    // ignore
+  }
+}
+
+
+app.get('/api/game/simulate', async (req, res) => {
+  const result = await runSimulationInternal();
+  if (result.success) {
+    res.json(result);
+  } else {
+    res.status(500).json(result);
   }
 });
 
