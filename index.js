@@ -567,7 +567,7 @@ app.post('/api/game/deposit', async (req, res) => {
     }
     const txData = await txRes.json();
     
-    const tx = txData.transactions.find(t => t.tx_id === txId);
+    const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
     if (!tx) {
       return res.status(400).json({ success: false, error: '該当する取引が見つかりません。' });
     }
