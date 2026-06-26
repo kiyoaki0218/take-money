@@ -376,7 +376,26 @@ async function handleStockAction(type) {
     return;
   }
 
-  msgEl.innerText = '取引中...';
+  const stock = currentStocks.find(s => s.id === selectedStockId);
+  if (!stock) {
+    alert('銘柄情報が見つかりません');
+    return;
+  }
+
+  const totalPrice = Math.round(parseFloat(stock.current_price) * qty);
+  let txId = null;
+
+  if (type === 'buy') {
+    msgEl.innerText = `KCウォレットから ${totalPrice} KC を送金中...`;
+    txId = await sendKCToAdmin(totalPrice);
+    if (!txId) {
+      msgEl.innerText = '支払いに失敗しました';
+      return;
+    }
+    msgEl.innerText = '支払い完了。ゲームに反映中...';
+  } else {
+    msgEl.innerText = '取引中...';
+  }
 
   try {
     const res = await fetch(`${API_BASE}/stocks/trade`, {
@@ -386,7 +405,8 @@ async function handleStockAction(type) {
         address: userAddress,
         stockId: selectedStockId,
         type: type,
-        quantity: qty
+        quantity: qty,
+        txId: txId
       })
     });
     const data = await res.json();
