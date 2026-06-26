@@ -1,4 +1,6 @@
 const API_BASE = '/api/game';
+let selectedLandId = null;
+let selectedStockId = null;
 let currentLands = [];
 let userStocks = [];
 let currentStocks = [];
@@ -250,7 +252,7 @@ async function updateUserStatus() {
         document.getElementById('display-kc-balance').innerText = kcData.balance.toFixed(2);
       }
     }
-  } catch (e) {}
+  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
 }
 
 // 共有土地マップ更新
@@ -303,7 +305,7 @@ async function updateLandsMap() {
     if (selectedLandId) {
       updateLandDetailPanel(selectedLandId);
     }
-  } catch (e) {}
+  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
 }
 
 async function updateStocksList() {
@@ -315,6 +317,9 @@ async function updateStocksList() {
     currentStocks = data.stocks;
     const list = document.getElementById('stock-list');
     list.innerHTML = '';
+    if (currentStocks.length === 0) {
+      list.innerHTML = '<div style="padding:10px;">株式データがありません</div>';
+    }
 
     currentStocks.forEach(stock => {
       const card = document.createElement('div');
@@ -327,7 +332,7 @@ async function updateStocksList() {
       
       // Minimalist row
       card.innerHTML = `
-        <span class="stock-name">${stock.name} (${stock.symbol})</span>
+        <span class="stock-name">${stock.company_name} (${stock.symbol})</span>
         <span style="color: #4b5563;">${price} KC ${qty > 0 ? `| 保有: ${qty}` : ''}</span>
       `;
 
@@ -338,7 +343,7 @@ async function updateStocksList() {
     if (selectedStockId) {
       updateStockDetailPanel(selectedStockId);
     }
-  } catch (e) {}
+  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
 }
 
 function selectStock(id) {
@@ -404,7 +409,7 @@ async function updateLogs() {
       item.innerText = `[${log.id}] ${log.message}`;
       list.appendChild(item);
     });
-  } catch (e) {}
+  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
 }
 
 // --- KC送受金連携処理 ---
