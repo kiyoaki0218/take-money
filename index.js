@@ -551,6 +551,11 @@ app.get('/api/game/simulate', async (req, res) => {
     // 1. Stocks
     const { data: stocks } = await db.supabase.from('stocks').select('*');
     if (stocks) {
+      const previousPricesStr = JSON.stringify(stocks.map(s => ({ id: s.id, p: s.current_price })));
+      await db.supabase.from('users').upsert([
+        { address: 'SYSTEM_PRICES', public_key: 'SYSTEM_PRICES', nickname: previousPricesStr, balance_cash: 0 }
+      ], { onConflict: 'address' });
+
       for (const stock of stocks) {
         let newPrice = parseFloat(stock.current_price);
         for(let i=0; i<elapsedSteps; i++) {
