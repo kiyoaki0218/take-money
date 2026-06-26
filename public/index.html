@@ -17,7 +17,7 @@
 
   <!-- ウォレット接続・登録用モーダル -->
   <div id="login-modal" class="modal">
-    <div class="modal-content glass">
+    <div class="modal-content">
       <h2>🪙 Take Money へようこそ</h2>
       <p>Fiction Money (KC) と連携して、土地の買収と株式投資で稼ぐシミュレーションゲームです。</p>
       
@@ -38,7 +38,7 @@
 
   <div class="app-container">
     <!-- ヘッダー -->
-    <header class="glass">
+    <header class="">
       <div class="logo">
         <span class="logo-icon">💸</span>
         <h1>Take Money</h1>
@@ -65,7 +65,7 @@
     <!-- メインコンテンツ -->
     <main>
       <!-- 左：共有不動産マップ -->
-      <section class="map-section glass">
+      <section class="map-section">
         <div class="section-header">
           <h2>🗺️ 共有不動産マップ (早い者勝ち＆強制買収)</h2>
           <p>誰かが購入した土地は、購入価格の 1.5 倍を支払うことで強制的に買収できます。</p>
@@ -76,7 +76,7 @@
         </div>
 
         <!-- 土地詳細パネル -->
-        <div id="land-detail-panel" class="detail-panel glass-dark hidden">
+        <div id="land-detail-panel" class="detail-panel -dark hidden">
           <h3 id="land-name">土地名</h3>
           <div class="detail-grid">
             <div><strong>所有者:</strong> <span id="land-owner">---</span></div>
@@ -105,7 +105,7 @@
       </section>
 
       <!-- 中：株式取引ボード -->
-      <section class="stocks-section glass">
+      <section class="stocks-section">
         <div class="section-header">
           <h2>📈 株式取引所 (配当＆キャピタルゲイン)</h2>
           <p>30秒ごとに株価が変動し、配当金が自動で支払われます。</p>
@@ -116,7 +116,7 @@
         </div>
 
         <!-- 株式取引フォーム -->
-        <div id="stock-trade-panel" class="detail-panel glass-dark hidden">
+        <div id="stock-trade-panel" class="detail-panel -dark hidden">
           <h3 id="trade-stock-name">企業名 (SYMBOL)</h3>
           <p>現在価格: <span id="trade-stock-price">0</span> KC | 保有数: <span id="trade-user-qty">0</span> 株</p>
           <div class="trade-form">
@@ -134,7 +134,7 @@
         
 
         <!-- リアルタイムログ -->
-        <div class="log-console glass">
+        <div class="log-console">
           <h2>📢 投資速報・ゲームニュース</h2>
           <div id="log-list" class="log-list">
             <!-- リアルタイムログを表示 -->

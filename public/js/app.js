@@ -253,13 +253,6 @@ async function updateLandsMap() {
         const cell = document.createElement('div');
         cell.className = 'map-cell';
         cell.dataset.id = land.id;
-        cell.innerHTML = `
-          <span class="cell-coords">${land.coordinate}</span>
-          <span class="cell-name">${land.name}</span>
-          <span class="cell-level"></span>
-          <span class="cell-owner"></span>
-          <span class="cell-price"></span>
-        `;
         cell.addEventListener('click', () => selectLand(land.id));
         grid.appendChild(cell);
       });
@@ -268,35 +261,19 @@ async function updateLandsMap() {
     lands.forEach(land => {
       const cell = grid.querySelector(`[data-id="${land.id}"]`);
       if (!cell) return;
-
-      const ownerSpan = cell.querySelector('.cell-owner');
-      const priceSpan = cell.querySelector('.cell-price');
-      const levelSpan = cell.querySelector('.cell-level');
-      const nameSpan = cell.querySelector('.cell-name');
-
-      nameSpan.innerText = land.name;
       
       // Update color class
       cell.className = 'map-cell' + (land.id === selectedLandId ? ' selected' : '');
-      if (land.type === '空き地') cell.classList.add('land-empty');
-      else if (land.type === '住宅地') cell.classList.add('land-residential');
+      if (land.type === '空き地') {
+         if (land.owner_address) cell.classList.add('land-empty'); // 黒 (購入済空き地)
+         // 未購入はデフォルトスタイル(白)のまま
+      } else if (land.type === '住宅地') cell.classList.add('land-residential');
       else if (land.type === '商業地') cell.classList.add('land-commercial');
       else if (land.type === '工業地') cell.classList.add('land-industrial');
 
-      if (land.owner_address) {
-        ownerSpan.innerText = land.owner_name ? '👤 ' + land.owner_name : '👤 Unknown';
-        ownerSpan.style.color = (land.owner_address === userAddress) ? '#10b981' : '#f59e0b';
-        priceSpan.innerText = `💰 ${land.purchase_price} KC`;
-      } else {
-        ownerSpan.innerText = '👤 空き地';
-        ownerSpan.style.color = '#9ca3af';
-        priceSpan.innerText = `💰 ${land.base_price} KC`;
-      }
-
-      if (land.rent_rate > 0) {
-        levelSpan.innerText = `利回り: ${(land.rent_rate * 100).toFixed(1)}%`;
-      } else {
-        levelSpan.innerText = '';
+      // Highlight user's land with a subtle border if not selected
+      if (land.owner_address === userAddress && land.id !== selectedLandId) {
+        cell.classList.add('my-land');
       }
     });
 
@@ -312,56 +289,32 @@ async function updateStocksList() {
     const data = await res.json();
     if (!data.success) return;
 
-    // 保有株数の把握のため、ユーザーステータスも同時に参照
-    const userRes = await fetch(`${API_BASE}/status/${userAddress}`);
-    const userData = await userRes.json();
-    const myHoldings = userData.success ? userData.stocks : [];
-
+    currentStocks = data.stocks;
     const list = document.getElementById('stock-list');
-    const beforeListLength = list.children.length;
+    list.innerHTML = '';
 
-    if (beforeListLength === 0) {
-      list.innerHTML = '';
-      data.stocks.forEach(stock => {
-        const card = document.createElement('div');
-        card.className = 'stock-card';
-        card.dataset.id = stock.id;
-        card.innerHTML = `
-          <div class="stock-info">
-            <span class="stock-symbol">${stock.symbol}</span>
-            <span class="stock-name">${stock.company_name}</span>
-          </div>
-          <div class="stock-values">
-            <div class="stock-price">${parseFloat(stock.current_price).toFixed(2)} Cash</div>
-            <div class="stock-div">配当: ${parseFloat(stock.dividend_yield).toFixed(2)}%</div>
-          </div>
-        `;
-        card.addEventListener('click', () => selectStock(stock.id));
-        list.appendChild(card);
-      });
-    }
+    currentStocks.forEach(stock => {
+      const card = document.createElement('div');
+      card.className = 'stock-card' + (stock.id === selectedStockId ? ' selected' : '');
+      card.dataset.id = stock.id;
+      
+      const price = parseFloat(stock.current_price).toFixed(0);
+      const userStock = userStocks.find(s => s.stock_id === stock.id);
+      const qty = userStock ? userStock.quantity : 0;
+      
+      // Minimalist row
+      card.innerHTML = `
+        <span class="stock-name">${stock.name} (${stock.symbol})</span>
+        <span style="color: #4b5563;">${price} KC ${qty > 0 ? `| 保有: ${qty}` : ''}</span>
+      `;
 
-    // 各カードの状態更新
-    data.stocks.forEach(stock => {
-      const card = list.querySelector(`[data-id="${stock.id}"]`);
-      if (!card) return;
-
-      const priceDiv = card.querySelector('.stock-price');
-      priceDiv.innerText = `${parseFloat(stock.current_price).toFixed(2)} Cash`;
-
-      const holding = myHoldings.find(h => h.id === stock.id);
-      const heldQty = holding ? holding.quantity : 0;
-
-      if (selectedStockId === stock.id) {
-        card.classList.add('selected');
-        document.getElementById('trade-stock-name').innerText = `${stock.company_name} (${stock.symbol})`;
-        document.getElementById('trade-stock-price').innerText = stock.current_price.toFixed(2);
-        document.getElementById('trade-user-qty').innerText = heldQty;
-      } else {
-        card.classList.remove('selected');
-      }
+      card.addEventListener('click', () => selectStock(stock.id));
+      list.appendChild(card);
     });
 
+    if (selectedStockId) {
+      updateStockDetailPanel(selectedStockId);
+    }
   } catch (e) {}
 }
 
