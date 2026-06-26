@@ -54,6 +54,7 @@ async function initAdminWallet() {
 async function ensureInit(req, res, next) {
   if (!isInitialized) {
     await initAdminWallet();
+    startSimulators();
     isInitialized = true;
   }
   next();
