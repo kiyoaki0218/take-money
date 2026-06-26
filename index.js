@@ -515,96 +515,110 @@ app.get('/api/game/logs', async (req, res) => {
 // --- シミュレーター（サーバーレス対応） ---
 app.get('/api/game/simulate', async (req, res) => {
   try {
-    // Cooldown logic (Memory + Temp File)
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-    const cooldownFile = path.join(os.tmpdir(), 'take_money_cooldown.txt');
-    
-    let lastTime = 0;
-    if (global.lastSimulateTime) {
-      lastTime = global.lastSimulateTime;
-    } else {
-      try {
-        if (fs.existsSync(cooldownFile)) {
-          lastTime = parseInt(fs.readFileSync(cooldownFile, 'utf8'));
-        }
-      } catch(e) {}
-    }
+    const { data: systemClock, error: clockErr } = await db.supabase
+      .from('users')
+      .select('balance_cash')
+      .eq('address', 'SYSTEM_CLOCK')
+      .maybeSingle();
+      
+    if (clockErr) throw clockErr;
 
     const now = Date.now();
-    if (now - lastTime < 170000) {
+    let lastTime = systemClock ? Number(systemClock.balance_cash) : now;
+
+    const elapsedMs = now - lastTime;
+    const intervalMs = 170000;
+
+    if (elapsedMs < intervalMs && systemClock) {
       return res.json({ success: true, message: "Cooldown active" });
     }
 
-    global.lastSimulateTime = now;
-    try { fs.writeFileSync(cooldownFile, now.toString(), 'utf8'); } catch(e) {}
+    let elapsedSteps = Math.floor(elapsedMs / intervalMs);
+    if (!systemClock) {
+      elapsedSteps = 1;
+      lastTime = now;
+    }
+    if (elapsedSteps > 1000) {
+      elapsedSteps = 1000; // Cap at ~47 hours
+    }
+    if (elapsedSteps <= 0) elapsedSteps = 1;
 
+    const newClock = systemClock ? lastTime + (elapsedSteps * intervalMs) : now;
+    await db.supabase.from('users').upsert([
+      { address: 'SYSTEM_CLOCK', public_key: 'SYSTEM_CLOCK', nickname: 'SYSTEM_CLOCK', balance_cash: newClock }
+    ], { onConflict: 'address' });
 
+    // 1. Stocks
     const { data: stocks } = await db.supabase.from('stocks').select('*');
     if (stocks) {
       for (const stock of stocks) {
-        const changePercent = (Math.random() * 0.2) - 0.1;
-        let newPrice = parseFloat(stock.current_price) * (1 + changePercent);
+        let newPrice = parseFloat(stock.current_price);
+        for(let i=0; i<elapsedSteps; i++) {
+          const changePercent = (Math.random() * 0.2) - 0.1;
+          newPrice = newPrice * (1 + changePercent);
+        }
         newPrice = Math.max(10, Math.round(newPrice * 100) / 100);
         await db.supabase.from('stocks').update({ current_price: newPrice }).eq('id', stock.id);
       }
     }
 
+    // 2. Lands
     const { data: lands } = await db.supabase.from('lands').select('*');
     if (lands) {
       for (const land of lands) {
-        const changePercent = (Math.random() * 0.08) - 0.03;
-        let newPrice = parseFloat(land.base_price) * (1 + changePercent);
+        let newPrice = parseFloat(land.base_price);
+        for(let i=0; i<elapsedSteps; i++) {
+          const changePercent = (Math.random() * 0.08) - 0.03;
+          newPrice = newPrice * (1 + changePercent);
+        }
         newPrice = Math.max(50, Math.round(newPrice));
         await db.supabase.from('lands').update({ base_price: newPrice }).eq('id', land.id);
       }
     }
 
-    // Rent distribution
+    // 3. Rent
     const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
     if (ownedLands) {
       for (const land of ownedLands) {
         const rentRate = parseFloat(land.rent_rate);
         if (rentRate > 0) {
-          const rentIncome = Math.round(parseFloat(land.purchase_price) * rentRate);
-          if (rentIncome > 0) {
+          const singleRent = Math.round(parseFloat(land.purchase_price) * rentRate);
+          const totalRent = singleRent * elapsedSteps;
+          if (totalRent > 0) {
             const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
-            const sig = signMessage(`${adminAddress}:${land.owner_address}:${rentIncome}:${nonce}`);
-            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: rentIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
+            const sig = signMessage(`${adminAddress}:${land.owner_address}:${totalRent}:${nonce}`);
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: totalRent, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
           }
         }
       }
     }
 
-    // Dividends distribution
+    // 4. Dividends
     const { data: holdings } = await db.supabase.from('user_stocks').select('quantity, address, stock_id').gt('quantity', 0);
     if (holdings && stocks) {
       for (const hold of holdings) {
         const stock = stocks.find(s => s.id === hold.stock_id);
         if (stock) {
-          const divIncome = Math.round(parseFloat(stock.current_price) * hold.quantity * 0.008);
-          if (divIncome > 0) {
+          const singleDiv = Math.round(parseFloat(stock.current_price) * hold.quantity * 0.008);
+          const totalDiv = singleDiv * elapsedSteps;
+          if (totalDiv > 0) {
             const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
-            const sig = signMessage(`${adminAddress}:${hold.address}:${divIncome}:${nonce}`);
-            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: divIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
+            const sig = signMessage(`${adminAddress}:${hold.address}:${totalDiv}:${nonce}`);
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: totalDiv, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
           }
         }
       }
     }
 
-    if (Math.random() < 0.2) {
+    if (Math.random() < 0.5) {
       const events = [
-        "📢 地価急騰ニュース：銀座エリアのインフラ整備が決定し、周辺の地価が上昇傾向です！",
-        "📢 株式ニュース：アップルパイ社が新作アップルタルトを発表し、株価に好影響を与えています。",
-        "📢 不動産市況：全体の不動産家賃収入が活性化しています！",
-        "📢 テスラコプター社：新モデルのヘリコプターが航空法に適合し、市場の期待が高まっています。"
+        `📢 経過報告：時間経過に伴い、${elapsedSteps}回分の市場変動・家賃振込が完了しました！`
       ];
       const randomMsg = events[Math.floor(Math.random() * events.length)];
       await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
     }
 
-    res.json({ success: true, message: "Simulation executed" });
+    res.json({ success: true, message: `Simulation executed (${elapsedSteps} steps)` });
   } catch (e) {
     console.error("Simulation error:", e);
     res.status(500).json({ success: false, error: e.message });
