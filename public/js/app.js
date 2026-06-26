@@ -37,7 +37,28 @@ function updateLandDetailPanel(id) {
   }
   document.getElementById('land-level').innerText = levelText;
 
-  document.getElementById('land-base-price').innerText = land.base_price.toLocaleString();
+  
+  let cost = 0;
+  const rr = parseFloat(land.rent_rate);
+  const bp = parseFloat(land.base_price);
+  if (land.type === '住宅地') {
+    if (rr <= 0.015) cost = bp * 1.5;
+    else if (rr <= 0.035) cost = bp * 3.0;
+  } else if (land.type === '商業地') {
+    if (rr <= 0.020) cost = bp * 2.0;
+    else if (rr <= 0.045) cost = bp * 4.0;
+  } else if (land.type === '工業地') {
+    if (rr <= 0.025) cost = bp * 2.5;
+    else if (rr <= 0.055) cost = bp * 5.0;
+  }
+
+  const sellPrice = land.purchase_price ? Math.floor(land.purchase_price * 0.8) : 0;
+
+  document.getElementById('land-base-price').innerText = land.base_price.toLocaleString() + (cost > 0 ? ` (次LvUP: ${cost.toLocaleString()} KC)` : '');
+  if(document.getElementById('land-sell-price')) {
+     document.getElementById('land-sell-price').innerText = sellPrice.toLocaleString();
+  }
+
   document.getElementById('land-purchase-price').innerText = land.purchase_price ? land.purchase_price.toLocaleString() : '0';
   document.getElementById('land-rent').innerText = land.purchase_price ? Math.round(land.purchase_price * land.rent_rate).toLocaleString() : '0';
 
@@ -201,9 +222,6 @@ async function deriveAddress(pubKeyBase64) {
 
 // ループ更新
 function startUpdateLoop() {
-  setInterval(() => { fetch(`${API_BASE}/simulate`).catch(e=>{}); }, 30000); // Check every 30s
-  fetch(`${API_BASE}/simulate`).catch(e=>{}); // Trigger once on load
-
   updateAllData();
   setInterval(updateAllData, 2000); // 2秒ごと
 }
@@ -221,8 +239,7 @@ async function updateUserStatus() {
     const res = await fetch(`${API_BASE}/status/${userAddress}`);
     const data = await res.json();
     if (data.success) {
-      
-      
+      userStocks = data.stocks || [];
       // KCサーバーからウォレット残高を取得
       const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}?t=${Date.now()}`, { cache: 'no-store' });
       if (kcRes.ok) {
