@@ -1,3 +1,12 @@
+const API_BASE = '/api/game';
+let currentLands = [];
+let userStocks = [];
+let currentStocks = [];
+let userAddress = null;
+let userSecretKey = null;
+let userPublicKeyBase64 = null;
+let userNickname = null;
+
 function selectLand(id) {
   selectedLandId = id;
   const cells = document.querySelectorAll('.map-cell');
@@ -93,13 +102,7 @@ function updateLandDetailPanel(id) {
   }
 }
 
-﻿const API_BASE = '/api/game';
-
-let userAddress = '';
-let userPublicKeyBase64 = '';
-let userSecretKey = null; // Uint8Array
-let selectedLandId = null;
-let selectedStockId = null;
+﻿
 
 // ドキュメント読み込み完了時
 document.addEventListener('DOMContentLoaded', () => {
