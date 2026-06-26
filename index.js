@@ -54,7 +54,6 @@ async function initAdminWallet() {
 async function ensureInit(req, res, next) {
   if (!isInitialized) {
     await initAdminWallet();
-    startSimulators();
     isInitialized = true;
   }
   next();
@@ -513,77 +512,97 @@ app.get('/api/game/logs', async (req, res) => {
 });
 
 // --- シミュレーション処理 (Supabase版) ---
-function startSimulators() {
-  setInterval(async () => {
-    try {
-      const { data: stocks } = await db.supabase.from('stocks').select('*');
-      if (stocks) {
-        for (const stock of stocks) {
-          const changePercent = (Math.random() * 0.2) - 0.1;
-          let newPrice = parseFloat(stock.current_price) * (1 + changePercent);
-          newPrice = Math.max(10, Math.round(newPrice * 100) / 100);
-          await db.supabase.from('stocks').update({ current_price: newPrice }).eq('id', stock.id);
-        }
-      }
+// --- シミュレーター（サーバーレス対応） ---
+app.get('/api/game/simulate', async (req, res) => {
+  try {
+    const { data: lastLog } = await db.supabase
+      .from('game_logs')
+      .select('created_at')
+      .like('message', '%【システム】配当と地価の更新%')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      const { data: lands } = await db.supabase.from('lands').select('*');
-      if (lands) {
-        for (const land of lands) {
-          const changePercent = (Math.random() * 0.08) - 0.03;
-          let newPrice = parseFloat(land.base_price) * (1 + changePercent);
-          newPrice = Math.max(50, Math.round(newPrice));
-          await db.supabase.from('lands').update({ base_price: newPrice }).eq('id', land.id);
-        }
+    if (lastLog) {
+      const lastTime = new Date(lastLog.created_at).getTime();
+      const now = Date.now();
+      if (now - lastTime < 170000) { // 170 seconds cooldown
+        return res.json({ success: true, message: "Cooldown active" });
       }
-
-      // Rent distribution
-      const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
-      if (ownedLands) {
-        for (const land of ownedLands) {
-          const rentRate = parseFloat(land.rent_rate);
-          if (rentRate > 0) {
-            const rentIncome = Math.round(parseFloat(land.purchase_price) * rentRate);
-            if (rentIncome > 0) {
-              const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
-              const sig = signMessage(`${adminAddress}:${land.owner_address}:${rentIncome}:${nonce}`);
-              fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: rentIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
-            }
-          }
-        }
-      }
-
-      // Dividends distribution
-      const { data: holdings } = await db.supabase.from('user_stocks').select('quantity, address, stock_id').gt('quantity', 0);
-      if (holdings && stocks) {
-        for (const hold of holdings) {
-          const stock = stocks.find(s => s.id === hold.stock_id);
-          if (stock) {
-            const divIncome = Math.round(parseFloat(stock.current_price) * hold.quantity * 0.008);
-            if (divIncome > 0) {
-              const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
-              const sig = signMessage(`${adminAddress}:${hold.address}:${divIncome}:${nonce}`);
-              fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: divIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
-            }
-          }
-        }
-      }
-
-      if (Math.random() < 0.2) {
-        const events = [
-          "📢 地価急騰ニュース：銀座エリアのインフラ整備が決定し、周辺の地価が上昇傾向です！",
-          "📢 株式ニュース：アップルパイ社が新作アップルタルトを発表し、株価に好影響を与えています。",
-          "📢 不動産市況：全体の不動産家賃収入が活性化しています！",
-          "📢 テスラコプター社：新モデルのヘリコプターが航空法に適合し、市場の期待が高まっています。"
-        ];
-        const randomMsg = events[Math.floor(Math.random() * events.length)];
-        await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
-      }
-
-    } catch (e) {
-      console.error("Simulation error:", e);
     }
-  }, 180000); // 3 minutes
-}
+
+    // 実行フラグとして先にログを挿入（多重実行防止）
+    await db.supabase.from('game_logs').insert([{ message: '【システム】配当と地価の更新を完了しました' }]);
+
+    const { data: stocks } = await db.supabase.from('stocks').select('*');
+    if (stocks) {
+      for (const stock of stocks) {
+        const changePercent = (Math.random() * 0.2) - 0.1;
+        let newPrice = parseFloat(stock.current_price) * (1 + changePercent);
+        newPrice = Math.max(10, Math.round(newPrice * 100) / 100);
+        await db.supabase.from('stocks').update({ current_price: newPrice }).eq('id', stock.id);
+      }
+    }
+
+    const { data: lands } = await db.supabase.from('lands').select('*');
+    if (lands) {
+      for (const land of lands) {
+        const changePercent = (Math.random() * 0.08) - 0.03;
+        let newPrice = parseFloat(land.base_price) * (1 + changePercent);
+        newPrice = Math.max(50, Math.round(newPrice));
+        await db.supabase.from('lands').update({ base_price: newPrice }).eq('id', land.id);
+      }
+    }
+
+    // Rent distribution
+    const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
+    if (ownedLands) {
+      for (const land of ownedLands) {
+        const rentRate = parseFloat(land.rent_rate);
+        if (rentRate > 0) {
+          const rentIncome = Math.round(parseFloat(land.purchase_price) * rentRate);
+          if (rentIncome > 0) {
+            const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
+            const sig = signMessage(`${adminAddress}:${land.owner_address}:${rentIncome}:${nonce}`);
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: rentIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
+          }
+        }
+      }
+    }
+
+    // Dividends distribution
+    const { data: holdings } = await db.supabase.from('user_stocks').select('quantity, address, stock_id').gt('quantity', 0);
+    if (holdings && stocks) {
+      for (const hold of holdings) {
+        const stock = stocks.find(s => s.id === hold.stock_id);
+        if (stock) {
+          const divIncome = Math.round(parseFloat(stock.current_price) * hold.quantity * 0.008);
+          if (divIncome > 0) {
+            const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
+            const sig = signMessage(`${adminAddress}:${hold.address}:${divIncome}:${nonce}`);
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: divIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
+          }
+        }
+      }
+    }
+
+    if (Math.random() < 0.2) {
+      const events = [
+        "📢 地価急騰ニュース：銀座エリアのインフラ整備が決定し、周辺の地価が上昇傾向です！",
+        "📢 株式ニュース：アップルパイ社が新作アップルタルトを発表し、株価に好影響を与えています。",
+        "📢 不動産市況：全体の不動産家賃収入が活性化しています！",
+        "📢 テスラコプター社：新モデルのヘリコプターが航空法に適合し、市場の期待が高まっています。"
+      ];
+      const randomMsg = events[Math.floor(Math.random() * events.length)];
+      await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
+    }
+
+    res.json({ success: true, message: "Simulation executed" });
+  } catch (e) {
+    console.error("Simulation error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // 重複送信（Vercelリトライ等）防止用の送金キャッシュ
 const sendCache = new Map();

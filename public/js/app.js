@@ -201,6 +201,9 @@ async function deriveAddress(pubKeyBase64) {
 
 // ループ更新
 function startUpdateLoop() {
+  setInterval(() => { fetch(`${API_BASE}/simulate`).catch(e=>{}); }, 30000); // Check every 30s
+  fetch(`${API_BASE}/simulate`).catch(e=>{}); // Trigger once on load
+
   updateAllData();
   setInterval(updateAllData, 2000); // 2秒ごと
 }
