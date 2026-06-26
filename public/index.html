@@ -53,10 +53,7 @@
           <span class="label">ADDRESS</span>
           <span id="display-address" class="val">---</span>
         </div>
-        <div class="status-card highlight-cash">
-          <span class="label">CASH (ゲーム内)</span>
-          <span id="display-cash" class="val">0.00</span> <span class="unit">Cash</span>
-        </div>
+        
         <div class="status-card highlight-kc">
           <span class="label">WALLET (KC)</span>
           <span id="display-kc-balance" class="val">0.00</span> <span class="unit">KC</span>
@@ -85,9 +82,9 @@
             <div><strong>所有者:</strong> <span id="land-owner">---</span></div>
             <div><strong>位置:</strong> <span id="land-coordinate">---</span></div>
             <div><strong>建物レベル:</strong> <span id="land-level">---</span></div>
-            <div><strong>基準価格:</strong> <span id="land-base-price">0</span> Cash</div>
-            <div><strong>直近購入価格:</strong> <span id="land-purchase-price">0</span> Cash</div>
-            <div><strong>秒間家賃利回り:</strong> <span id="land-rent">0</span> Cash</div>
+            <div><strong>基準価格:</strong> <span id="land-base-price">0</span> KC</div>
+            <div><strong>直近購入価格:</strong> <span id="land-purchase-price">0</span> KC</div>
+            <div><strong>秒間家賃利回り:</strong> <span id="land-rent">0</span> KC</div>
           </div>
           <div class="panel-actions">
             <button id="btn-buy-land" class="btn btn-success w-full">土地を新規購入</button>
@@ -113,7 +110,7 @@
         <!-- 株式取引フォーム -->
         <div id="stock-trade-panel" class="detail-panel glass-dark hidden">
           <h3 id="trade-stock-name">企業名 (SYMBOL)</h3>
-          <p>現在価格: <span id="trade-stock-price">0</span> Cash | 保有数: <span id="trade-user-qty">0</span> 株</p>
+          <p>現在価格: <span id="trade-stock-price">0</span> KC | 保有数: <span id="trade-user-qty">0</span> 株</p>
           <div class="trade-form">
             <input type="number" id="trade-qty-input" min="1" value="10">
             <button id="btn-buy-stock" class="btn btn-primary">買付</button>
@@ -126,28 +123,7 @@
       <!-- 右：ウォレット連携＆ゲームログ -->
       <section class="wallet-log-section">
         <!-- デポジット・出金パネル -->
-        <div class="wallet-console glass">
-          <h2>🔌 ウォレット送受金 (KC ⇔ Cash)</h2>
-          <div class="console-box">
-            <h3>入金 (KC → Cashデポジット)</h3>
-            <p class="desc">KCウォレットからゲーム内へ資金をデポジット（チャージ）します。</p>
-            <div class="form-row">
-              <input type="number" id="deposit-amount-input" placeholder="送金額..." min="1" value="100">
-              <button id="btn-send-kc-to-admin" class="btn btn-primary">デポジット実行</button>
-            </div>
-            <p id="deposit-msg" class="info-msg"></p>
-          </div>
-
-          <div class="console-box">
-            <h3>出金 (Cash → ウォレットへ回収)</h3>
-            <p class="desc">ゲーム内現金をKCウォレットに直接送金して引き出します。</p>
-            <div class="form-row">
-              <input type="number" id="withdraw-amount-input" placeholder="出金額..." min="1">
-              <button id="btn-withdraw" class="btn btn-warning">出金実行</button>
-            </div>
-            <p id="withdraw-msg" class="info-msg"></p>
-          </div>
-        </div>
+        
 
         <!-- リアルタイムログ -->
         <div class="log-console glass">

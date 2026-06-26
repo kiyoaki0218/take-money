@@ -28,8 +28,8 @@ function setupEventListeners() {
   document.getElementById('btn-sell-stock').addEventListener('click', () => handleStockAction('sell'));
 
   // デポジット・出金アクション
-  document.getElementById('btn-send-kc-to-admin').addEventListener('click', handleKCSendToAdmin);
-  document.getElementById('btn-withdraw').addEventListener('click', handleWithdraw);
+  
+  
 }
 
 // 保存されたキーがあれば自動ログイン
@@ -141,7 +141,7 @@ async function updateUserStatus() {
     const res = await fetch(`${API_BASE}/status/${userAddress}`);
     const data = await res.json();
     if (data.success) {
-      document.getElementById('display-cash').innerText = data.user.balance_cash.toFixed(2);
+      
       
       // KCサーバーからウォレット残高を取得
       const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}?t=${Date.now()}`, { cache: 'no-store' });
@@ -532,53 +532,32 @@ async function updateLogs() {
 let adminWalletAddress = '';
 
 // 1. KCサーバーへの送金 (デポジットステップ1)
-async function handleKCSendToAdmin() {
-  const amount = parseFloat(document.getElementById('deposit-amount-input').value);
-  const msgEl = document.getElementById('deposit-msg');
-  const btnSend = document.getElementById('btn-send-kc-to-admin');
-  
-  if (isNaN(amount) || amount <= 0) {
-    alert('金額を正しく入力してください');
-    return;
-  }
 
-  // 多重送信防止
-  btnSend.disabled = true;
-  btnSend.innerText = '処理中...';
-  msgEl.innerText = '運営ウォレットアドレスを照会中...';
+// 3. 出金処理
 
+
+
+
+
+
+// 支払いトランザクション用ヘルパー
+async function sendKCToAdmin(amount) {
   try {
-    // 運営アドレスを擬似的にゲームサーバーのログイン・設定から抽出するか、
-    // ここではデモ用シードから算出した運営アドレスを固定（server.jsと一致）
     const seed = new Uint8Array(32);
     seed.fill(7);
-    const adminKeyPairObj = nacl.sign.keyPair.fromSeed(seed);
-    const adminPubKeyBase64 = nacl.util.encodeBase64(adminKeyPairObj.publicKey);
+    const adminKeyPair = nacl.sign.keyPair.fromSeed(seed);
+    const pubBytes = adminKeyPair.publicKey;
     
-    // アドレス算出
-    const pubBytes = nacl.util.decodeBase64(adminPubKeyBase64);
     const hashBuffer = await crypto.subtle.digest('SHA-256', pubBytes);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    adminWalletAddress = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
-
-    msgEl.innerText = 'KCサーバーから送信元のnonceを取得中...';
-
-    // 1. KCサーバーから現在の送信者(ユーザー)のnonceを取得
-    
+    const adminWalletAddress = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 
     const nonce = Date.now().toString();
-
-    msgEl.innerText = 'トランザクションに署名中...';
-
-    // 2. 署名の作成 (from:to:amount:nonce)
     const message = `${userAddress}:${adminWalletAddress}:${amount}:${nonce}`;
     const msgBytes = nacl.util.decodeUTF8(message);
     const signatureBytes = nacl.sign.detached(msgBytes, userSecretKey);
     const signature = nacl.util.encodeBase64(signatureBytes);
 
-    msgEl.innerText = 'KCを送金中...';
-
-    // 3. KCサーバーへ直接送金リクエスト
     const sendRes = await fetch(`${API_BASE}/kc-proxy/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -591,79 +570,16 @@ async function handleKCSendToAdmin() {
         publicKey: userPublicKeyBase64
       })
     });
-
+    
     const sendData = await sendRes.json();
     if (sendData.success) {
-      msgEl.innerText = `送金成功 (txId: ${sendData.txId})。反映を同期中...`;
-      
-      // KCサーバー側の書き込み・インデックス反映のタイムラグを吸収するため1.5秒待機
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      msgEl.innerText = `送金成功。ゲーム内残高へ反映中...`;
-
-      // 自動デポジット反映の実行
-      try {
-        const claimRes = await fetch(`${API_BASE}/deposit`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address: userAddress,
-            txId: sendData.txId
-          })
-        });
-        const claimData = await claimRes.json();
-        if (claimData.success) {
-          msgEl.innerText = `🎉 デポジットが完了しました！ ${amount} Cash をゲーム内に反映しました。`;
-          updateUserStatus();
-        } else {
-          msgEl.innerText = `送金は成功しましたが、ゲーム内反映に失敗しました: ${claimData.error}`;
-        }
-      } catch (err) {
-        msgEl.innerText = '送金成功後のゲーム内反映通信でエラーが発生しました。';
-      }
+      return sendData.txId;
     } else {
-      msgEl.innerText = `送金失敗: ${sendData.error}`;
+      console.error("Payment failed:", sendData.error);
+      return null;
     }
   } catch (e) {
-    msgEl.innerText = 'KCサーバーとの通信に失敗しました。';
-  } finally {
-    btnSend.disabled = false;
-    btnSend.innerText = 'デポジット実行';
+    console.error("Payment error:", e);
+    return null;
   }
 }
-
-// 3. 出金処理
-async function handleWithdraw() {
-  const amount = parseFloat(document.getElementById('withdraw-amount-input').value);
-  const msgEl = document.getElementById('withdraw-msg');
-  if (isNaN(amount) || amount <= 0) {
-    alert('出金額を正しく入力してください');
-    return;
-  }
-
-  msgEl.innerText = '出金処理を実行中...';
-
-  try {
-    const res = await fetch(`${API_BASE}/withdraw`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: userAddress,
-        amount: amount
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      msgEl.innerText = data.message;
-      updateUserStatus();
-    } else {
-      msgEl.innerText = `出金エラー: ${data.error}`;
-    }
-  } catch (e) {
-    msgEl.innerText = '通信エラーが発生しました';
-  }
-}
-
-
-
-
-

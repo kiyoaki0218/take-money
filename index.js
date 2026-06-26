@@ -217,157 +217,136 @@ app.get('/api/game/lands', async (req, res) => {
 
 // 4. 土地の新規購入
 app.post('/api/game/lands/buy', async (req, res) => {
-  const { address, landId } = req.body;
+  const { address, landId, txId } = req.body;
   try {
     const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
     const { data: land } = await db.supabase.from('lands').select('*').eq('id', landId).single();
 
-    if (!user || !land) {
-      return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
+    if (!user || !land) return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
+    if (land.owner_address) return res.status(400).json({ success: false, error: 'この土地は既に所有されています。' });
+
+    // Verify Payment
+    const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
+    if (!txRes.ok) return res.status(500).json({ success: false, error: 'KCサーバーへの接続エラー' });
+    const txData = await txRes.json();
+    const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
+    if (!tx || tx.to_addr !== adminAddress || tx.from_addr !== address) {
+      return res.status(400).json({ success: false, error: '有効な支払いトランザクションが見つかりません' });
     }
-    if (land.owner_address) {
-      return res.status(400).json({ success: false, error: 'この土地は既に所有されています。' });
+    const amountPaid = parseFloat(tx.amountDisplay || (tx.amount / 1000000));
+    if (amountPaid < parseFloat(land.base_price)) {
+      return res.status(400).json({ success: false, error: '支払額が不足しています' });
     }
-    if (parseFloat(user.balance_cash) < parseFloat(land.base_price)) {
-      return res.status(400).json({ success: false, error: '資金が不足しています' });
-    }
+    
+    // Check if already processed
+    const { data: logExists } = await db.supabase.from('game_logs').select('id').like('message', `%txId: ${txId}%`).maybeSingle();
+    if (logExists) return res.status(400).json({ success: false, error: 'この取引は既に処理されています' });
 
     const { data: recheck } = await db.supabase.from('lands').select('owner_address').eq('id', landId).single();
     if (recheck.owner_address) {
-      return res.status(400).json({ success: false, error: 'タッチの差で土地が購入されました' });
+      // Refund
+      const nonce = Date.now().toString();
+      const sig = signMessage(`${adminAddress}:${address}:${amountPaid}:${nonce}`);
+      await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: amountPaid, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+      return res.status(400).json({ success: false, error: 'タッチの差で土地が購入されました。代金は返金されました。' });
     }
 
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(user.balance_cash) - parseFloat(land.base_price) })
-      .eq('address', address);
-
-    await db.supabase
-      .from('lands')
-      .update({ owner_address: address, purchase_price: parseFloat(land.base_price), rent_rate: 0.015 })
-      .eq('id', landId);
+    await db.supabase.from('lands').update({ owner_address: address, purchase_price: parseFloat(land.base_price), rent_rate: 0.015 }).eq('id', landId);
 
     const typeNum = land.id % 3;
     let landType = '住宅地区';
     if (typeNum === 1) landType = '商業地区';
     if (typeNum === 2) landType = '工業地区';
     const landName = `${landType} ${land.coordinate}`;
-    const msg = `「${user.nickname}」が「${landName}」を ${land.base_price} Cash で購入しました！`;
-    await db.supabase.from('game_logs').insert([{ message: msg }]);
 
-    res.json({ success: true, message: '土地の購入が完了しました' });
+    await db.supabase.from('game_logs').insert([{ message: `🏠「${user.nickname}」が「${landName}」を購入しました！ (txId: ${txId})` }]);
+    res.json({ success: true, message: `${landName} を購入しました！` });
   } catch (e) {
-    console.error("Lands Buy Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
 // 5. 強制買収
 app.post('/api/game/lands/takeover', async (req, res) => {
-  const { address, landId } = req.body;
+  const { address, landId, txId } = req.body;
   try {
     const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
     const { data: land } = await db.supabase.from('lands').select('*').eq('id', landId).single();
 
-    if (!user || !land) {
-      return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
-    }
-    if (!land.owner_address) {
-      return res.status(400).json({ success: false, error: 'この土地は空き地です。通常購入をしてください。' });
-    }
-    if (land.owner_address === address) {
-      return res.status(400).json({ success: false, error: '自分の土地を買収することはできません' });
+    if (!user || !land) return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
+    if (!land.owner_address || land.owner_address === address) {
+      return res.status(400).json({ success: false, error: '買収できない土地です' });
     }
 
-    const { data: prevOwner } = await db.supabase.from('users').select('*').eq('address', land.owner_address).single();
-    const takeoverPrice = parseFloat(land.purchase_price) * 1.5;
+    const currentPrice = land.purchase_price ? parseFloat(land.purchase_price) : parseFloat(land.base_price);
+    const takeoverPrice = currentPrice * 1.5;
 
-    if (parseFloat(user.balance_cash) < takeoverPrice) {
-      return res.status(400).json({ success: false, error: `買収資金が不足しています。必要額: ${takeoverPrice} Cash` });
+    // Verify Payment
+    const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
+    if (!txRes.ok) return res.status(500).json({ success: false, error: 'KCサーバーへの接続エラー' });
+    const txData = await txRes.json();
+    const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
+    if (!tx || tx.to_addr !== adminAddress || tx.from_addr !== address) {
+      return res.status(400).json({ success: false, error: '有効な支払いが見つかりません' });
     }
+    const amountPaid = parseFloat(tx.amountDisplay || (tx.amount / 1000000));
+    if (amountPaid < takeoverPrice) return res.status(400).json({ success: false, error: '支払額が買収価格に満たないです' });
 
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(user.balance_cash) - takeoverPrice })
-      .eq('address', address);
+    const { data: logExists } = await db.supabase.from('game_logs').select('id').like('message', `%txId: ${txId}%`).maybeSingle();
+    if (logExists) return res.status(400).json({ success: false, error: '処理済みです' });
 
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(prevOwner.balance_cash) + takeoverPrice })
-      .eq('address', land.owner_address);
+    // 旧所有者に補償金を支払う
+    const nonce = Date.now().toString();
+    const sig = signMessage(`${adminAddress}:${land.owner_address}:${takeoverPrice}:${nonce}`);
+    await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: takeoverPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
 
-    await db.supabase
-      .from('lands')
-      .update({ owner_address: address, purchase_price: takeoverPrice, rent_rate: 0.015 })
-      .eq('id', landId);
+    await db.supabase.from('lands').update({ owner_address: address, purchase_price: takeoverPrice }).eq('id', landId);
 
     const typeNum = land.id % 3;
     let landType = '住宅地区';
     if (typeNum === 1) landType = '商業地区';
     if (typeNum === 2) landType = '工業地区';
     const landName = `${landType} ${land.coordinate}`;
-    const msg = `🔥「${user.nickname}」が「${prevOwner.nickname}」から「${landName}」を ${takeoverPrice} Cash で強制買収しました！`;
-    await db.supabase.from('game_logs').insert([{ message: msg }]);
 
-    res.json({ success: true, message: `${landName}を${takeoverPrice} Cashで買収しました！` });
+    await db.supabase.from('game_logs').insert([{ message: `🤝「${user.nickname}」が「${landName}」を買収しました！ (txId: ${txId})` }]);
+    res.json({ success: true, message: `${landName} を買収しました！` });
   } catch (e) {
-    console.error("Lands Takeover Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
 // 5.5. 土地レベルアップ
 app.post('/api/game/lands/levelup', async (req, res) => {
-  const { address, landId } = req.body;
+  const { address, landId, txId } = req.body;
   try {
     const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
     const { data: land } = await db.supabase.from('lands').select('*').eq('id', landId).single();
 
-    if (!user || !land) {
-      return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
-    }
-    if (land.owner_address !== address) {
-      return res.status(400).json({ success: false, error: '自分が所有している土地以外はレベルアップできません' });
-    }
+    if (!user || !land) return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
+    if (land.owner_address !== address) return res.status(400).json({ success: false, error: '自分の土地以外はレベルアップできません' });
 
     const currentRentRate = parseFloat(land.rent_rate);
-    let nextLevel = 1;
     let cost = 0;
     let nextRentRate = 0.015;
     let levelName = 'マンション';
 
-    if (currentRentRate <= 0.015) {
-      nextLevel = 2;
-      cost = parseFloat(land.base_price) * 1.5;
-      nextRentRate = 0.035;
-      levelName = 'オフィスビル';
-    } else if (currentRentRate <= 0.035) {
-      nextLevel = 3;
-      cost = parseFloat(land.base_price) * 3.0;
-      nextRentRate = 0.070;
-      levelName = 'タワーマンション';
-    } else {
-      return res.status(400).json({ success: false, error: '既に最大レベル（タワーマンション）です' });
-    }
+    if (currentRentRate <= 0.015) { cost = parseFloat(land.base_price) * 1.5; nextRentRate = 0.035; levelName = 'オフィスビル'; }
+    else if (currentRentRate <= 0.035) { cost = parseFloat(land.base_price) * 3.0; nextRentRate = 0.070; levelName = 'タワーマンション'; }
+    else return res.status(400).json({ success: false, error: '既に最大レベルです' });
 
-    if (parseFloat(user.balance_cash) < cost) {
-      return res.status(400).json({ success: false, error: `レベルアップ資金が不足しています。必要額: ${cost} Cash` });
-    }
+    const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
+    if (!txRes.ok) return res.status(500).json({ success: false, error: 'KCサーバーへの接続エラー' });
+    const txData = await txRes.json();
+    const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
+    if (!tx || tx.to_addr !== adminAddress || tx.from_addr !== address) return res.status(400).json({ success: false, error: '有効な支払いが見つかりません' });
+    const amountPaid = parseFloat(tx.amountDisplay || (tx.amount / 1000000));
+    if (amountPaid < cost) return res.status(400).json({ success: false, error: '支払額が不足しています' });
 
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(user.balance_cash) - cost })
-      .eq('address', address);
+    const { data: logExists } = await db.supabase.from('game_logs').select('id').like('message', `%txId: ${txId}%`).maybeSingle();
+    if (logExists) return res.status(400).json({ success: false, error: '処理済みです' });
 
     const newPurchasePrice = (land.purchase_price ? parseFloat(land.purchase_price) : parseFloat(land.base_price)) + cost;
-
-    await db.supabase
-      .from('lands')
-      .update({ 
-        rent_rate: nextRentRate,
-        purchase_price: newPurchasePrice
-      })
-      .eq('id', landId);
+    await db.supabase.from('lands').update({ rent_rate: nextRentRate, purchase_price: newPurchasePrice }).eq('id', landId);
 
     const typeNum = land.id % 3;
     let landType = '住宅地区';
@@ -375,16 +354,12 @@ app.post('/api/game/lands/levelup', async (req, res) => {
     if (typeNum === 2) landType = '工業地区';
     const landName = `${landType} ${land.coordinate}`;
 
-    const msg = `🏢「${user.nickname}」が「${landName}」をレベルアップし、[${levelName}] に改築しました！`;
-    await db.supabase.from('game_logs').insert([{ message: msg }]);
-
+    await db.supabase.from('game_logs').insert([{ message: `🏢「${user.nickname}」が「${landName}」を [${levelName}] に改築しました！ (txId: ${txId})` }]);
     res.json({ success: true, message: `${landName}を${levelName}にレベルアップしました！` });
   } catch (e) {
-    console.error("Lands Levelup Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
-
 
 // 5.6. 土地売却
 app.post('/api/game/lands/sell', async (req, res) => {
@@ -393,29 +368,19 @@ app.post('/api/game/lands/sell', async (req, res) => {
     const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
     const { data: land } = await db.supabase.from('lands').select('*').eq('id', landId).single();
 
-    if (!user || !land) {
-      return res.status(404).json({ success: false, error: 'ユーザーまたは土地が見つかりません' });
-    }
-    if (land.owner_address !== address) {
-      return res.status(400).json({ success: false, error: '自分が所有している土地以外は売却できません' });
-    }
+    if (!user || !land) return res.status(404).json({ success: false, error: '見つかりません' });
+    if (land.owner_address !== address) return res.status(400).json({ success: false, error: '自分の土地しか売却できません' });
 
-    const purchasePrice = parseFloat(land.purchase_price) || parseFloat(land.base_price);
-    const sellPrice = Math.round(purchasePrice * 0.8);
+    const currentPrice = land.purchase_price ? parseFloat(land.purchase_price) : parseFloat(land.base_price);
+    const sellPrice = currentPrice * 0.8;
 
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(user.balance_cash) + sellPrice })
-      .eq('address', address);
+    // Send KC to user
+    const nonce = Date.now().toString();
+    const sig = signMessage(`${adminAddress}:${address}:${sellPrice}:${nonce}`);
+    const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: sellPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+    if (!sendRes.ok) return res.status(400).json({ success: false, error: 'KC送金に失敗しました' });
 
-    await db.supabase
-      .from('lands')
-      .update({ 
-        owner_address: null, 
-        purchase_price: null, 
-        rent_rate: 0.015 
-      })
-      .eq('id', landId);
+    await db.supabase.from('lands').update({ owner_address: null, purchase_price: null, rent_rate: 0.015 }).eq('id', landId);
 
     const typeNum = land.id % 3;
     let landType = '住宅地区';
@@ -423,12 +388,9 @@ app.post('/api/game/lands/sell', async (req, res) => {
     if (typeNum === 2) landType = '工業地区';
     const landName = `${landType} ${land.coordinate}`;
 
-    const msg = `🏛️「${user.nickname}」が「${landName}」を ${sellPrice} Cash で国に売却（国有化）しました。`;
-    await db.supabase.from('game_logs').insert([{ message: msg }]);
-
-    res.json({ success: true, message: `${landName}を${sellPrice} Cashで売却しました。` });
+    await db.supabase.from('game_logs').insert([{ message: `📉「${user.nickname}」が「${landName}」を売却しました。` }]);
+    res.json({ success: true, message: `${landName} を売却し、${sellPrice} KCを獲得しました！` });
   } catch (e) {
-    console.error("Lands Sell Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -452,86 +414,58 @@ app.get('/api/game/stocks', async (req, res) => {
 
 // 7. 株式売買
 app.post('/api/game/stocks/trade', async (req, res) => {
-  const { address, stockId, type, quantity } = req.body;
-  const qty = parseInt(quantity);
-  if (!address || !stockId || !type || isNaN(qty) || qty <= 0) {
-    return res.status(400).json({ success: false, error: '不正なパラメータです' });
-  }
+  const { address, stockId, quantity, type, txId } = req.body;
+  if (!address || !stockId || !quantity || quantity <= 0) return res.status(400).json({ success: false, error: '無効なパラメータです' });
 
   try {
     const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
     const { data: stock } = await db.supabase.from('stocks').select('*').eq('id', stockId).single();
+    if (!user || !stock) return res.status(404).json({ success: false, error: 'ユーザーまたは株式が見つかりません' });
 
-    if (!user || !stock) {
-      return res.status(404).json({ success: false, error: 'ユーザーまたは株式が見つかりません' });
-    }
-
-    const totalCost = parseFloat(stock.current_price) * qty;
+    const totalPrice = parseFloat(stock.current_price) * quantity;
 
     if (type === 'buy') {
-      if (parseFloat(user.balance_cash) < totalCost) {
-        return res.status(400).json({ success: false, error: '資金が不足しています' });
-      }
-
-      await db.supabase
-        .from('users')
-        .update({ balance_cash: parseFloat(user.balance_cash) - totalCost })
-        .eq('address', address);
-
-      const { data: existingStock } = await db.supabase
-        .from('user_stocks')
-        .select('quantity')
-        .eq('address', address)
-        .eq('stock_id', stockId)
-        .maybeSingle();
-
-      if (existingStock) {
-        await db.supabase
-          .from('user_stocks')
-          .update({ quantity: existingStock.quantity + qty })
-          .eq('address', address)
-          .eq('stock_id', stockId);
-      } else {
-        await db.supabase
-          .from('user_stocks')
-          .insert([{ address, stock_id: stockId, quantity: qty }]);
-      }
-
-      await db.supabase.from('game_logs').insert([{
-        message: `📈「${user.nickname}」が「${stock.company_name}」の株を ${qty} 株 (${totalCost} Cash) 購入しました`
-      }]);
-
+      if (!txId) return res.status(400).json({ success: false, error: 'txIdが必要です' });
+      const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
+      if (!txRes.ok) return res.status(500).json({ success: false, error: 'KCサーバー接続エラー' });
+      const txData = await txRes.json();
+      const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
+      if (!tx || tx.to_addr !== adminAddress || tx.from_addr !== address) return res.status(400).json({ success: false, error: '有効な支払いが見つかりません' });
+      const amountPaid = parseFloat(tx.amountDisplay || (tx.amount / 1000000));
+      if (amountPaid < totalPrice) return res.status(400).json({ success: false, error: '支払額が不足しています' });
+      
+      const { data: logExists } = await db.supabase.from('game_logs').select('id').like('message', `%txId: ${txId}%`).maybeSingle();
+      if (logExists) return res.status(400).json({ success: false, error: '処理済みです' });
     } else if (type === 'sell') {
-      const { data: existingStock } = await db.supabase
-        .from('user_stocks')
-        .select('quantity')
-        .eq('address', address)
-        .eq('stock_id', stockId)
-        .maybeSingle();
-
-      if (!existingStock || existingStock.quantity < qty) {
-        return res.status(400).json({ success: false, error: '保有株数が不足しています' });
-      }
-
-      await db.supabase
-        .from('users')
-        .update({ balance_cash: parseFloat(user.balance_cash) + totalCost })
-        .eq('address', address);
-
-      await db.supabase
-        .from('user_stocks')
-        .update({ quantity: existingStock.quantity - qty })
-        .eq('address', address)
-        .eq('stock_id', stockId);
-
-      await db.supabase.from('game_logs').insert([{
-        message: `📉「${user.nickname}」が「${stock.company_name}」の株を ${qty} 株 (${totalCost} Cash) 売却しました`
-      }]);
+      const { data: hold } = await db.supabase.from('user_stocks').select('quantity').eq('address', address).eq('stock_id', stockId).maybeSingle();
+      if (!hold || hold.quantity < quantity) return res.status(400).json({ success: false, error: '保有数が不足しています' });
+      
+      const nonce = Date.now().toString();
+      const sig = signMessage(`${adminAddress}:${address}:${totalPrice}:${nonce}`);
+      const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: totalPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) });
+      if (!sendRes.ok) return res.status(400).json({ success: false, error: 'KC送金に失敗しました' });
+    } else {
+      return res.status(400).json({ success: false, error: '無効な取引タイプです' });
     }
 
-    res.json({ success: true, message: '株式取引が完了しました' });
+    const { data: holding } = await db.supabase.from('user_stocks').select('id, quantity').eq('address', address).eq('stock_id', stockId).maybeSingle();
+    let newQuantity = quantity;
+    if (holding) {
+      newQuantity = type === 'buy' ? holding.quantity + quantity : holding.quantity - quantity;
+      if (newQuantity > 0) {
+        await db.supabase.from('user_stocks').update({ quantity: newQuantity }).eq('id', holding.id);
+      } else {
+        await db.supabase.from('user_stocks').delete().eq('id', holding.id);
+      }
+    } else if (type === 'buy') {
+      await db.supabase.from('user_stocks').insert([{ address, stock_id: stockId, quantity }]);
+    }
+
+    const actionText = type === 'buy' ? '購入' : '売却';
+    await db.supabase.from('game_logs').insert([{ message: `📈「${user.nickname}」が${stock.company_name}株を ${quantity}株 ${actionText}しました` }]);
+
+    res.json({ success: true, message: `${stock.company_name}株を${quantity}株${actionText}しました！` });
   } catch (e) {
-    console.error("Stocks Trade Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -549,115 +483,6 @@ app.get('/api/game/logs', async (req, res) => {
     res.json({ success: true, logs });
   } catch (e) {
     console.error("Logs Error:", e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// 9. デポジット
-app.post('/api/game/deposit', async (req, res) => {
-  const { address, txId } = req.body;
-  if (!address || !txId) {
-    return res.status(400).json({ success: false, error: 'アドレスと取引ID (txId) が必要です' });
-  }
-
-  try {
-    const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
-    if (!txRes.ok) {
-      return res.status(400).json({ success: false, error: 'KC取引履歴の取得に失敗しました' });
-    }
-    const txData = await txRes.json();
-    
-    const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
-    if (!tx) {
-      return res.status(400).json({ success: false, error: '該当する取引が見つかりません。' });
-    }
-    
-    if (tx.to_addr !== adminAddress) {
-      return res.status(400).json({ success: false, error: '送金先が運営ウォレットではありません' });
-    }
-
-    const amount = parseFloat(tx.amountDisplay);
-
-    const { data: logExists } = await db.supabase
-      .from('game_logs')
-      .select('id')
-      .like('message', `%txId: ${txId}%`)
-      .maybeSingle();
-
-    if (logExists) {
-      return res.status(400).json({ success: false, error: 'この取引は既に反映されています' });
-    }
-
-    const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
-
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(user.balance_cash) + amount })
-      .eq('address', address);
-
-    await db.supabase.from('game_logs').insert([{
-      message: `💰「${user.nickname}」が ${amount} KC をゲーム内にデポジットしました！ (txId: ${txId})`
-    }]);
-
-    res.json({ success: true, amount, message: `${amount} KC をデポジット反映しました` });
-  } catch (e) {
-    console.error("Deposit Error:", e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// 10. 出金
-app.post('/api/game/withdraw', async (req, res) => {
-  const { address, amount } = req.body;
-  const withdrawAmount = parseFloat(amount);
-  if (!address || isNaN(withdrawAmount) || withdrawAmount <= 0) {
-    return res.status(400).json({ success: false, error: '無効なパラメータです' });
-  }
-
-  try {
-    const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'ユーザーが見つかりません' });
-    }
-    if (parseFloat(user.balance_cash) < withdrawAmount) {
-      return res.status(400).json({ success: false, error: '残高が不足しています' });
-    }
-
-    const nonce = Date.now().toString();
-
-    const message = `${adminAddress}:${address}:${withdrawAmount}:${nonce}`;
-    const signature = signMessage(message);
-
-    const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: adminAddress,
-        to: address,
-        amount: withdrawAmount,
-        nonce: nonce,
-        signature: signature,
-        publicKey: adminPublicKeyBase64
-      })
-    });
-
-    const sendData = await sendRes.json();
-    if (!sendData.success) {
-      return res.status(400).json({ success: false, error: `KCサーバー送金失敗: ${sendData.error}` });
-    }
-
-    await db.supabase
-      .from('users')
-      .update({ balance_cash: parseFloat(user.balance_cash) - withdrawAmount })
-      .eq('address', address);
-
-    await db.supabase.from('game_logs').insert([{
-      message: `💸「${user.nickname}」が ${withdrawAmount} KC をウォレットへ出金しました。`
-    }]);
-
-    res.json({ success: true, amount: withdrawAmount, message: '出金が完了しました！' });
-  } catch (e) {
-    console.error("Withdraw Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -686,19 +511,20 @@ function startSimulators() {
         }
       }
 
+      // Rent distribution
       const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address').not('owner_address', 'is', null);
       if (ownedLands) {
         for (const land of ownedLands) {
           const rentIncome = Math.round(parseFloat(land.purchase_price) * 0.015);
           if (rentIncome > 0) {
-            const { data: user } = await db.supabase.from('users').select('balance_cash').eq('address', land.owner_address).single();
-            if (user) {
-              await db.supabase.from('users').update({ balance_cash: parseFloat(user.balance_cash) + rentIncome }).eq('address', land.owner_address);
-            }
+            const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
+            const sig = signMessage(`${adminAddress}:${land.owner_address}:${rentIncome}:${nonce}`);
+            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: rentIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
           }
         }
       }
 
+      // Dividends distribution
       const { data: holdings } = await db.supabase.from('user_stocks').select('quantity, address, stock_id').gt('quantity', 0);
       if (holdings && stocks) {
         for (const hold of holdings) {
@@ -706,10 +532,9 @@ function startSimulators() {
           if (stock) {
             const divIncome = Math.round(parseFloat(stock.current_price) * hold.quantity * 0.008);
             if (divIncome > 0) {
-              const { data: user } = await db.supabase.from('users').select('balance_cash').eq('address', hold.address).single();
-              if (user) {
-                await db.supabase.from('users').update({ balance_cash: parseFloat(user.balance_cash) + divIncome }).eq('address', hold.address);
-              }
+              const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
+              const sig = signMessage(`${adminAddress}:${hold.address}:${divIncome}:${nonce}`);
+              fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: divIncome, nonce, signature: sig, publicKey: adminPublicKeyBase64 }) }).catch(e => console.error(e));
             }
           }
         }
@@ -729,7 +554,7 @@ function startSimulators() {
     } catch (e) {
       console.error("Simulation error:", e);
     }
-  }, 30000);
+  }, 180000); // 3 minutes
 }
 
 // 重複送信（Vercelリトライ等）防止用の送金キャッシュ
