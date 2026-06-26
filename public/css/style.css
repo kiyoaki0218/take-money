@@ -172,11 +172,11 @@ section {
   color: var(--text-secondary);
 }
 
-/* 不動産グリッドマップ (6x6) */
+/* 不動産グリッドマップ (10x10) */
 .grid-map {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(6, 1fr);
+  grid-template-columns: repeat(10, 1fr);
+  grid-template-rows: repeat(10, 1fr);
   gap: 8px;
   aspect-ratio: 1;
 }
@@ -641,3 +641,33 @@ section {
     padding: 12px 16px;
   }
 }
+
+/* 10x10用の縮小調整 */
+.map-cell {
+  padding: 4px;
+}
+.map-cell .cell-coords {
+  font-size: 0.6rem;
+}
+.map-cell .cell-name {
+  font-size: 0.65rem;
+}
+.map-cell .cell-owner {
+  font-size: 0.55rem;
+}
+.map-cell .cell-price {
+  font-size: 0.55rem;
+}
+.map-cell.land-empty {
+  background: #374151;
+}
+.map-cell.land-residential {
+  background: #065f46;
+}
+.map-cell.land-commercial {
+  background: #1e3a8a;
+}
+.map-cell.land-industrial {
+  background: #78350f;
+}
+.map-cell-tiny-text { display: none; }

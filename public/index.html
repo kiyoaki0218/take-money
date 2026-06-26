@@ -87,8 +87,16 @@
             <div><strong>秒間家賃利回り:</strong> <span id="land-rent">0</span> KC</div>
           </div>
           <div class="panel-actions">
-            <button id="btn-buy-land" class="btn btn-success w-full">土地を新規購入</button>
-            <button id="btn-takeover-land" class="btn btn-warning w-full">土地を強制買収</button>
+            <!-- 空き地用 -->
+            <button id="btn-buy-land" class="btn btn-success w-full hidden">空き地を購入</button>
+            <div id="build-options" class="hidden" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+              <p style="font-size:0.8rem; text-align:center;">建築プランを選んでください</p>
+              <button id="btn-build-residential" class="btn btn-primary w-full">住宅を建てる (500万KC)</button>
+              <button id="btn-build-commercial" class="btn btn-primary w-full">商業施設を建てる (1000万KC)</button>
+              <button id="btn-build-industrial" class="btn btn-primary w-full">工場を建てる (1500万KC)</button>
+            </div>
+            <!-- 建築済・他人の土地用 -->
+            <button id="btn-takeover-land" class="btn btn-warning w-full hidden">土地を強制買収</button>
             <button id="btn-levelup-land" class="btn btn-primary w-full hidden">建物をレベルアップ</button>
             <button id="btn-sell-land" class="btn btn-danger w-full hidden">土地を売却</button>
           </div>

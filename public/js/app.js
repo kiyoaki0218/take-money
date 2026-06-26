@@ -1,3 +1,77 @@
+function selectLand(id) {
+  selectedLandId = id;
+  const cells = document.querySelectorAll('.map-cell');
+  cells.forEach(c => c.classList.remove('selected'));
+  
+  const targetCell = document.querySelector(`[data-id="${id}"]`);
+  if (targetCell) targetCell.classList.add('selected');
+
+  document.getElementById('land-detail-panel').classList.remove('hidden');
+  document.getElementById('land-action-msg').innerText = '';
+  
+  updateLandDetailPanel(id);
+}
+
+function updateLandDetailPanel(id) {
+  if (!currentLands) return;
+  const land = currentLands.find(l => l.id === id);
+  if (!land) return;
+
+  document.getElementById('land-name').innerText = land.name;
+  document.getElementById('land-owner').innerText = land.owner_name || 'なし (未所有)';
+  document.getElementById('land-coordinate').innerText = land.coordinate;
+  
+  let levelText = 'なし';
+  if (land.type === '住宅地') {
+    if (land.rent_rate <= 0.015) levelText = '住宅地 (Lv1)';
+    else if (land.rent_rate <= 0.035) levelText = 'マンション (Lv2)';
+    else levelText = 'タワーマンション (Lv3)';
+  } else if (land.type === '商業地') {
+    if (land.rent_rate <= 0.020) levelText = '商業地 (Lv1)';
+    else if (land.rent_rate <= 0.045) levelText = 'ショッピングモール (Lv2)';
+    else levelText = '巨大テーマパーク (Lv3)';
+  } else if (land.type === '工業地') {
+    if (land.rent_rate <= 0.025) levelText = '工業地 (Lv1)';
+    else if (land.rent_rate <= 0.055) levelText = '大規模工場 (Lv2)';
+    else levelText = 'ハイテク研究所 (Lv3)';
+  }
+  document.getElementById('land-level').innerText = levelText;
+
+  document.getElementById('land-base-price').innerText = land.base_price.toLocaleString();
+  document.getElementById('land-purchase-price').innerText = land.purchase_price ? land.purchase_price.toLocaleString() : '0';
+  document.getElementById('land-rent').innerText = land.purchase_price ? Math.round(land.purchase_price * land.rent_rate).toLocaleString() : '0';
+
+  const btnBuy = document.getElementById('btn-buy-land');
+  const btnTakeover = document.getElementById('btn-takeover-land');
+  const btnLevelUp = document.getElementById('btn-levelup-land');
+  const btnSell = document.getElementById('btn-sell-land');
+  const buildOptions = document.getElementById('build-options');
+
+  // Reset display
+  btnBuy.classList.add('hidden');
+  btnTakeover.classList.add('hidden');
+  btnLevelUp.classList.add('hidden');
+  btnSell.classList.add('hidden');
+  buildOptions.classList.add('hidden');
+
+  if (!land.owner_address) {
+    // 誰も所有していない空き地
+    btnBuy.classList.remove('hidden');
+  } else if (land.owner_address === userAddress) {
+    // 自分の土地
+    if (land.type === '空き地') {
+      buildOptions.classList.remove('hidden');
+      btnSell.classList.remove('hidden');
+    } else {
+      btnLevelUp.classList.remove('hidden');
+      btnSell.classList.remove('hidden');
+    }
+  } else {
+    // 他人の土地
+    btnTakeover.classList.remove('hidden');
+  }
+}
+
 ﻿const API_BASE = '/api/game';
 
 let userAddress = '';
@@ -19,6 +93,9 @@ function setupEventListeners() {
   
   // 土地アクション
   document.getElementById('btn-buy-land').addEventListener('click', () => handleLandAction('buy'));
+  document.getElementById('btn-build-residential').addEventListener('click', () => handleBuild('residential'));
+  document.getElementById('btn-build-commercial').addEventListener('click', () => handleBuild('commercial'));
+  document.getElementById('btn-build-industrial').addEventListener('click', () => handleBuild('industrial'));
   document.getElementById('btn-takeover-land').addEventListener('click', () => handleLandAction('takeover'));
   document.getElementById('btn-levelup-land').addEventListener('click', handleLandLevelUp);
   document.getElementById('btn-sell-land').addEventListener('click', handleLandSell);
@@ -160,12 +237,10 @@ async function updateLandsMap() {
     const data = await res.json();
     if (!data.success) return;
 
+    currentLands = data.lands;
     const grid = document.getElementById('grid-map');
-    
-    // 現在の選択セルを維持するためIDを控える
     const beforeGridLength = grid.children.length;
     
-    // マスデータの並び替え(座標基準で4x4グリッド)
     const lands = data.lands.sort((a, b) => {
       const [ax, ay] = a.coordinate.split(',').map(Number);
       const [bx, by] = b.coordinate.split(',').map(Number);
@@ -190,7 +265,6 @@ async function updateLandsMap() {
       });
     }
 
-    // 各マスの状態更新
     lands.forEach(land => {
       const cell = grid.querySelector(`[data-id="${land.id}"]`);
       if (!cell) return;
@@ -198,209 +272,40 @@ async function updateLandsMap() {
       const ownerSpan = cell.querySelector('.cell-owner');
       const priceSpan = cell.querySelector('.cell-price');
       const levelSpan = cell.querySelector('.cell-level');
+      const nameSpan = cell.querySelector('.cell-name');
 
-      // 建物レベルの判定
-      let levelText = 'マンション';
-      const rr = parseFloat(land.rent_rate);
-      if (rr <= 0.015) levelText = '🏢 マンション';
-      else if (rr <= 0.035) levelText = '🏢 オフィスビル';
-      else levelText = '🗼 タワマン';
-
-      // 土地タイプの判定 (id%3)
-      const typeNum = land.id % 3;
-      let typeClass = 'land-residential';
-      if (typeNum === 1) typeClass = 'land-commercial';
-      if (typeNum === 2) typeClass = 'land-industrial';
+      nameSpan.innerText = land.name;
+      
+      // Update color class
+      cell.className = 'map-cell' + (land.id === selectedLandId ? ' selected' : '');
+      if (land.type === '空き地') cell.classList.add('land-empty');
+      else if (land.type === '住宅地') cell.classList.add('land-residential');
+      else if (land.type === '商業地') cell.classList.add('land-commercial');
+      else if (land.type === '工業地') cell.classList.add('land-industrial');
 
       if (land.owner_address) {
-        cell.className = `map-cell owned ${typeClass}`;
-        levelSpan.innerText = levelText;
-        if (land.owner_address === userAddress) {
-          cell.classList.add('my-land');
-          ownerSpan.innerText = 'あなた';
-        } else {
-          ownerSpan.innerText = land.owner_name || land.owner_address.slice(0, 8);
-        }
-        priceSpan.innerText = `買収: ${land.purchase_price ? (land.purchase_price * 1.5).toFixed(0) : ''} Cash`;
+        ownerSpan.innerText = land.owner_name ? '👤 ' + land.owner_name : '👤 Unknown';
+        ownerSpan.style.color = (land.owner_address === userAddress) ? '#10b981' : '#f59e0b';
+        priceSpan.innerText = `💰 ${land.purchase_price} KC`;
       } else {
-        cell.className = 'map-cell land-empty';
-        levelSpan.innerText = '';
-        ownerSpan.innerText = '空き地';
-        priceSpan.innerText = `定価: ${land.base_price} Cash`;
+        ownerSpan.innerText = '👤 空き地';
+        ownerSpan.style.color = '#9ca3af';
+        priceSpan.innerText = `💰 ${land.base_price} KC`;
       }
 
-      if (selectedLandId === land.id) {
-        cell.classList.add('selected');
-        // 詳細パネルの更新
-        document.getElementById('land-name').innerText = land.name;
-        document.getElementById('land-coordinate').innerText = land.coordinate;
-        document.getElementById('land-owner').innerText = land.owner_address === userAddress ? 'あなた' : (land.owner_name || (land.owner_address ? land.owner_address.slice(0, 8) : 'なし'));
-        
-        let levelText = 'マンション';
-        const rr = parseFloat(land.rent_rate);
-        if (rr <= 0.015) levelText = 'マンション';
-        else if (rr <= 0.035) levelText = 'オフィスビル';
-        else levelText = 'タワーマンション';
-        document.getElementById('land-level').innerText = levelText;
-
-        document.getElementById('land-base-price').innerText = land.base_price.toFixed(0);
-        document.getElementById('land-purchase-price').innerText = land.purchase_price ? land.purchase_price.toFixed(0) : '---';
-        document.getElementById('land-rent').innerText = (land.purchase_price ? land.purchase_price * rr : land.base_price * rr).toFixed(1) + '/30秒';
-
-        const btnBuy = document.getElementById('btn-buy-land');
-        const btnTakeover = document.getElementById('btn-takeover-land');
-        const btnLevelUp = document.getElementById('btn-levelup-land');
-        const btnSell = document.getElementById('btn-sell-land');
-
-        if (land.owner_address) {
-          btnBuy.classList.add('hidden');
-          if (land.owner_address === userAddress) {
-            btnTakeover.classList.add('hidden');
-            btnLevelUp.classList.remove('hidden');
-            btnSell.classList.remove('hidden');
-            
-            // 売却額の算出（購入価格の80%）
-            const purchasePrice = land.purchase_price || land.base_price;
-            const sellPrice = Math.round(purchasePrice * 0.8);
-            btnSell.innerText = `土地を売却 (${sellPrice} Cash回収)`;
-
-            // レベルに応じたコストの計算
-            if (rr <= 0.015) {
-              const cost = land.base_price * 1.5;
-              btnLevelUp.innerText = `オフィスビルへ改築 (${cost.toFixed(0)} Cash)`;
-              btnLevelUp.disabled = false;
-            } else if (rr <= 0.035) {
-              const cost = land.base_price * 3.0;
-              btnLevelUp.innerText = `タワーマンションへ改築 (${cost.toFixed(0)} Cash)`;
-              btnLevelUp.disabled = false;
-            } else {
-              btnLevelUp.innerText = '最大レベル（タワマン）です';
-              btnLevelUp.disabled = true;
-            }
-          } else {
-            btnTakeover.classList.remove('hidden');
-            btnLevelUp.classList.add('hidden');
-            btnSell.classList.add('hidden');
-            btnTakeover.innerText = `強制買収 (${(land.purchase_price * 1.5).toFixed(0)} Cash)`;
-          }
-        } else {
-          btnBuy.classList.remove('hidden');
-          btnTakeover.classList.add('hidden');
-          btnLevelUp.classList.add('hidden');
-          btnSell.classList.add('hidden');
-        }
+      if (land.rent_rate > 0) {
+        levelSpan.innerText = `利回り: ${(land.rent_rate * 100).toFixed(1)}%`;
+      } else {
+        levelSpan.innerText = '';
       }
     });
 
+    if (selectedLandId) {
+      updateLandDetailPanel(selectedLandId);
+    }
   } catch (e) {}
 }
 
-function selectLand(id) {
-  selectedLandId = id;
-  const cells = document.querySelectorAll('.map-cell');
-  cells.forEach(c => c.classList.remove('selected'));
-  
-  const targetCell = document.querySelector(`[data-id="${id}"]`);
-  if (targetCell) targetCell.classList.add('selected');
-
-  document.getElementById('land-detail-panel').classList.remove('hidden');
-  document.getElementById('land-action-msg').innerText = '';
-}
-
-// 土地購入・買収の実行
-async function handleLandAction(actionType) {
-  if (!selectedLandId) return;
-  const endpoint = actionType === 'buy' ? '/lands/buy' : '/lands/takeover';
-  const msgEl = document.getElementById('land-action-msg');
-  msgEl.innerText = '処理中...';
-
-  try {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: userAddress,
-        landId: selectedLandId
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      msgEl.innerText = data.message;
-      updateLandsMap();
-      updateUserStatus();
-    } else {
-      msgEl.innerText = `エラー: ${data.error}`;
-    }
-  } catch (e) {
-    msgEl.innerText = '通信エラーが発生しました';
-  }
-}
-
-// 土地の売却実行
-async function handleLandSell() {
-  if (!selectedLandId) return;
-  
-  if (!confirm('本当にこの土地を国へ売却しますか？\n(購入額の 80% が払い戻され、建物はリセットされます)')) {
-    return;
-  }
-
-  const msgEl = document.getElementById('land-action-msg');
-  msgEl.innerText = '売却処理を実行中...';
-
-  try {
-    const res = await fetch(`${API_BASE}/lands/sell`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: userAddress,
-        landId: selectedLandId
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      msgEl.innerText = data.message;
-      updateLandsMap();
-      updateUserStatus();
-      // パネルを一時的に隠す、または更新
-      document.getElementById('land-detail-panel').classList.add('hidden');
-      selectedLandId = null;
-    } else {
-      msgEl.innerText = `エラー: ${data.error}`;
-    }
-  } catch (e) {
-    msgEl.innerText = '通信エラーが発生しました';
-  }
-}
-
-// 土地のレベルアップ実行
-async function handleLandLevelUp() {
-  if (!selectedLandId) return;
-  const msgEl = document.getElementById('land-action-msg');
-  msgEl.innerText = '改築中...';
-
-  try {
-    const res = await fetch(`${API_BASE}/lands/levelup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: userAddress,
-        landId: selectedLandId
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      msgEl.innerText = data.message;
-      updateLandsMap();
-      updateUserStatus();
-    } else {
-      msgEl.innerText = `エラー: ${data.error}`;
-    }
-  } catch (e) {
-    msgEl.innerText = '通信エラーが発生しました';
-  }
-}
-
-// 株式リスト更新
 async function updateStocksList() {
   try {
     const res = await fetch(`${API_BASE}/stocks`);
@@ -581,5 +486,42 @@ async function sendKCToAdmin(amount) {
   } catch (e) {
     console.error("Payment error:", e);
     return null;
+  }
+}
+
+async function handleBuild(type) {
+  if (!selectedLandId) return;
+  let cost = 0;
+  let typeName = '';
+  if (type === 'residential') { cost = 5000000; typeName = '住宅地'; }
+  else if (type === 'commercial') { cost = 10000000; typeName = '商業施設'; }
+  else if (type === 'industrial') { cost = 15000000; typeName = '工場'; }
+
+  const msgEl = document.getElementById('land-action-msg');
+  msgEl.innerText = `KCウォレットから ${cost} KC を送金中...`;
+
+  const txId = await sendKCToAdmin(cost);
+  if (!txId) {
+    msgEl.innerText = '支払いに失敗しました';
+    return;
+  }
+  msgEl.innerText = '支払い完了。ゲームに反映中...';
+
+  try {
+    const res = await fetch(`${API_BASE}/lands/build`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: userAddress, landId: selectedLandId, type, txId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerText = data.message;
+      updateLandsMap();
+      updateUserStatus();
+    } else {
+      msgEl.innerText = data.error;
+    }
+  } catch (e) {
+    msgEl.innerText = 'エラーが発生しました';
   }
 }
