@@ -325,13 +325,25 @@ async function updateStocksList() {
       card.dataset.id = stock.id;
       
       const price = parseFloat(stock.current_price).toFixed(0);
+      const prevPrice = parseFloat(stock.previous_price || stock.current_price).toFixed(0);
+      const diff = price - prevPrice;
+      const diffPercent = prevPrice > 0 ? ((diff / prevPrice) * 100).toFixed(1) : "0.0";
+      
+      let priceColorClass = 'price-flat';
+      let sign = '';
+      if (diff > 0) { priceColorClass = 'price-up'; sign = '+'; }
+      else if (diff < 0) { priceColorClass = 'price-down'; sign = ''; }
+
       const userStock = userStocks.find(s => s.stock_id === stock.id);
       const qty = userStock ? userStock.quantity : 0;
       
-      // Minimalist row
       card.innerHTML = `
         <span class="stock-name">${stock.company_name} (${stock.symbol})</span>
-        <span style="color: #4b5563;">${price} KC ${qty > 0 ? `| 保有: ${qty}` : ''}</span>
+        <span style="color: #4b5563; font-size: 0.9em;">
+          ${price} KC 
+          <span class="${priceColorClass}">(${sign}${diff} KC / ${sign}${diffPercent}%)</span>
+          ${qty > 0 ? `| 保有: ${qty}` : ''}
+        </span>
       `;
 
       card.addEventListener('click', () => selectStock(stock.id));
@@ -667,7 +679,7 @@ function updateStockDetailPanel(id) {
   const userStock = userStocks.find(s => s.stock_id === stock.id);
   const qty = userStock ? userStock.quantity : 0;
 
-  document.getElementById('trade-stock-price').innerHTML = `${price} <span class="${priceColorClass}">(${sign}${diff} KC / ${sign}${diffPercent}%)</span>`;
+  document.getElementById('trade-stock-price').innerHTML = `${price} KC <span class="${priceColorClass}">(${sign}${diff} KC / ${sign}${diffPercent}%)</span>`;
   document.getElementById('trade-user-qty').innerText = qty;
   
   document.getElementById('btn-buy-stock').onclick = () => handleStockAction('buy');
