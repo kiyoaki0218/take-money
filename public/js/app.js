@@ -252,7 +252,7 @@ async function updateUserStatus() {
         document.getElementById('display-kc-balance').innerText = kcData.balance.toFixed(2);
       }
     }
-  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
+  } catch (e) { console.error(e); }
 }
 
 // 共有土地マップ更新
@@ -305,7 +305,7 @@ async function updateLandsMap() {
     if (selectedLandId) {
       updateLandDetailPanel(selectedLandId);
     }
-  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
+  } catch (e) { console.error(e); }
 }
 
 async function updateStocksList() {
@@ -340,9 +340,7 @@ async function updateStocksList() {
       list.appendChild(card);
     });
 
-    if (selectedStockId) {
-      updateStockDetailPanel(selectedStockId);
-    }
+    if (selectedStockId) { updateStockDetailPanel(selectedStockId); }
   } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
 }
 
@@ -403,13 +401,14 @@ async function updateLogs() {
 
     const list = document.getElementById('log-list');
     list.innerHTML = '';
+    if (!data.logs || data.logs.length === 0) { list.innerHTML = '<div style="padding:10px;">ログがありません</div>'; }
     data.logs.forEach(log => {
       const item = document.createElement('div');
       item.className = 'log-item';
       item.innerText = `[${log.id}] ${log.message}`;
       list.appendChild(item);
     });
-  } catch (e) { document.getElementById('stock-list').innerText = e.toString(); }
+  } catch (e) { document.getElementById('log-list').innerText = e.toString(); }
 }
 
 // --- KC送受金連携処理 ---
