@@ -230,12 +230,40 @@ function updateAllData() {
 }
 
 // ユーザーステータス（残高含む）取得
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.innerText = msg;
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.right = '20px';
+  toast.style.background = '#10b981';
+  toast.style.color = '#fff';
+  toast.style.padding = '12px 24px';
+  toast.style.borderRadius = '8px';
+  toast.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+  toast.style.zIndex = '9999';
+  toast.style.fontWeight = 'bold';
+  toast.style.transition = 'opacity 0.5s';
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 500);
+  }, 5000);
+}
+
 async function updateUserStatus() {
   try {
     const res = await fetch(`${API_BASE}/status/${userAddress}`);
     const data = await res.json();
     if (data.success) {
-            // KCサーバーからウォレット残高を取得
+      if (data.claimed_rent && data.claimed_rent > 0) {
+        showToast(`💰 放置中に蓄積された家賃 ${data.claimed_rent.toLocaleString()} KC を自動回収しました！`);
+      }
+      if (data.claim_error) {
+        console.error("Claim Error:", data.claim_error);
+      }
+      
+      // KCサーバーからウォレット残高を取得
       const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}?t=${Date.now()}`, { cache: 'no-store' });
       if (kcRes.ok) {
         const kcData = await kcRes.json();

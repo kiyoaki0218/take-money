@@ -107,7 +107,7 @@ app.post('/api/game/register', async (req, res) => {
 
     const { data: newUser, error: insertError } = await db.supabase
       .from('users')
-      .insert([{ address, public_key: publicKey, nickname, balance_cash: 1000.0 }])
+      .insert([{ address, public_key: publicKey, nickname, balance_cash: 0.0 }])
       .select()
       .single();
 
@@ -474,57 +474,29 @@ async function runSimulationInternal() {
       }
     }
 
-    // 3. Rent
-    const { data: ownedLands } = await db.supabase.from('lands').select('name, coordinate, purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
+    // 3. Rent (Accumulate in users.balance_cash)
+    const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
     if (ownedLands) {
-      const promises = [];
+      const rentAgg = {};
       for (const land of ownedLands) {
         const rentRate = parseFloat(land.rent_rate);
         if (rentRate > 0) {
           const singleRent = Math.round(parseFloat(land.purchase_price) * rentRate);
           const totalRent = singleRent * elapsedSteps;
           if (totalRent > 0) {
-            const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
-            const sig = signMessage(`${adminAddress}:${land.owner_address}:${totalRent}:${nonce}`);
-            
-            // Push send request
-            promises.push(
-              fetch(`${KC_SERVER_URL}/api/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  from: adminAddress,
-                  to: land.owner_address,
-                  amount: totalRent,
-                  nonce,
-                  signature: sig,
-                  publicKey: adminPublicKeyBase64,
-                  nickname: 'take-money',
-                  senderName: 'take-money'
-                })
-              }).then(r => r.text()).catch(e => console.error("Rent send error:", e))
-            );
-            
-            // Push game log insert
-            promises.push(
-              db.supabase.from('game_logs').insert([{
-                message: `🏠「${land.name} ${land.coordinate}」の所有者に家賃 ${totalRent} KC が支払われました！`
-              }]).catch(e => console.error("Rent log error:", e))
-            );
+            rentAgg[land.owner_address] = (rentAgg[land.owner_address] || 0) + totalRent;
           }
         }
       }
-      if (promises.length > 0) {
-        await Promise.all(promises);
+      
+      for (const [address, amount] of Object.entries(rentAgg)) {
+        // Retrieve current accumulated rent
+        const { data: user } = await db.supabase.from('users').select('balance_cash').eq('address', address).single();
+        if (user) {
+          const currentAcc = Number(user.balance_cash) || 0;
+          await db.supabase.from('users').update({ balance_cash: currentAcc + amount }).eq('address', address);
+        }
       }
-    }
-
-    if (Math.random() < 0.5) {
-      const events = [
-        `📢 経過報告：時間経過に伴い、${elapsedSteps}回分の市場変動・家賃振込が完了しました！`
-      ];
-      const randomMsg = events[Math.floor(Math.random() * events.length)];
-      await db.supabase.from('game_logs').insert([{ message: randomMsg }]);
     }
 
     return { success: true, message: `Simulation executed (${elapsedSteps} steps)` };
