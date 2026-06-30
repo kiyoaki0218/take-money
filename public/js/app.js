@@ -227,7 +227,6 @@ function startUpdateLoop() {
 function updateAllData() {
   updateUserStatus();
   updateLandsMap();
-    updateLogs();
 }
 
 // ユーザーステータス（残高含む）取得

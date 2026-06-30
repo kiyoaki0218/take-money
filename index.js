@@ -475,8 +475,9 @@ async function runSimulationInternal() {
     }
 
     // 3. Rent
-    const { data: ownedLands } = await db.supabase.from('lands').select('purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
+    const { data: ownedLands } = await db.supabase.from('lands').select('name, coordinate, purchase_price, owner_address, rent_rate').not('owner_address', 'is', null);
     if (ownedLands) {
+      const promises = [];
       for (const land of ownedLands) {
         const rentRate = parseFloat(land.rent_rate);
         if (rentRate > 0) {
@@ -485,11 +486,36 @@ async function runSimulationInternal() {
           if (totalRent > 0) {
             const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
             const sig = signMessage(`${adminAddress}:${land.owner_address}:${totalRent}:${nonce}`);
-            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: land.owner_address, amount: totalRent, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
             
-            db.supabase.from('game_logs').insert([{ message: `🏠「${land.name} ${land.coordinate}」の所有者に家賃 ${totalRent} KC が支払われました！` }]).catch(e => console.error(e));
+            // Push send request
+            promises.push(
+              fetch(`${KC_SERVER_URL}/api/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  from: adminAddress,
+                  to: land.owner_address,
+                  amount: totalRent,
+                  nonce,
+                  signature: sig,
+                  publicKey: adminPublicKeyBase64,
+                  nickname: 'take-money',
+                  senderName: 'take-money'
+                })
+              }).then(r => r.text()).catch(e => console.error("Rent send error:", e))
+            );
+            
+            // Push game log insert
+            promises.push(
+              db.supabase.from('game_logs').insert([{
+                message: `🏠「${land.name} ${land.coordinate}」の所有者に家賃 ${totalRent} KC が支払われました！`
+              }]).catch(e => console.error("Rent log error:", e))
+            );
           }
         }
+      }
+      if (promises.length > 0) {
+        await Promise.all(promises);
       }
     }
 

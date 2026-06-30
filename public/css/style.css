@@ -53,9 +53,11 @@ header {
 .unit { font-size: 0.75rem; }
 
 main {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 16px;
+  width: 100%;
 }
 @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
 
