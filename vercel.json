@@ -5,5 +5,11 @@
       "source": "/api/(.*)",
       "destination": "/index.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/game/simulate",
+      "schedule": "*/3 * * * *"
+    }
   ]
 }

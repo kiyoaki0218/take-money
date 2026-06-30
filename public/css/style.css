@@ -54,7 +54,7 @@ header {
 
 main {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr;
   gap: 16px;
 }
 @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
@@ -74,8 +74,8 @@ section {
 /* Minimalist 10x10 Grid */
 .grid-map {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  grid-template-rows: repeat(10, 1fr);
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(12, 1fr);
   gap: 2px;
   aspect-ratio: 1;
 }

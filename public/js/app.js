@@ -1,9 +1,6 @@
 const API_BASE = '/api/game';
 let selectedLandId = null;
-let selectedStockId = null;
 let currentLands = [];
-let userStocks = [];
-let currentStocks = [];
 let userAddress = null;
 let userSecretKey = null;
 let userPublicKeyBase64 = null;
@@ -126,11 +123,7 @@ function setupEventListeners() {
   document.getElementById('btn-levelup-land').addEventListener('click', handleLandLevelUp);
   document.getElementById('btn-sell-land').addEventListener('click', handleLandSell);
 
-  // 株式アクション
-  document.getElementById('btn-buy-stock').addEventListener('click', () => handleStockAction('buy'));
-  document.getElementById('btn-sell-stock').addEventListener('click', () => handleStockAction('sell'));
-
-  // デポジット・出金アクション
+    // デポジット・出金アクション
   
   
 }
@@ -234,8 +227,7 @@ function startUpdateLoop() {
 function updateAllData() {
   updateUserStatus();
   updateLandsMap();
-  updateStocksList();
-  updateLogs();
+    updateLogs();
 }
 
 // ユーザーステータス（残高含む）取得
@@ -244,8 +236,7 @@ async function updateUserStatus() {
     const res = await fetch(`${API_BASE}/status/${userAddress}`);
     const data = await res.json();
     if (data.success) {
-      userStocks = data.stocks || [];
-      // KCサーバーからウォレット残高を取得
+            // KCサーバーからウォレット残高を取得
       const kcRes = await fetch(`${API_BASE}/kc-proxy/balance/${userAddress}?t=${Date.now()}`, { cache: 'no-store' });
       if (kcRes.ok) {
         const kcData = await kcRes.json();
@@ -306,120 +297,6 @@ async function updateLandsMap() {
       updateLandDetailPanel(selectedLandId);
     }
   } catch (e) { console.error(e); }
-}
-
-async function updateStocksList() {
-  try {
-    const res = await fetch(`${API_BASE}/stocks`);
-    const data = await res.json();
-    if (!data.success) return;
-
-    currentStocks = data.stocks;
-    const list = document.getElementById('stock-list');
-    list.innerHTML = '';
-    
-
-    currentStocks.forEach(stock => {
-      const card = document.createElement('div');
-      card.className = 'stock-card' + (stock.id === selectedStockId ? ' selected' : '');
-      card.dataset.id = stock.id;
-      
-      const price = parseFloat(stock.current_price).toFixed(0);
-      const prevPrice = parseFloat(stock.previous_price || stock.current_price).toFixed(0);
-      const diff = price - prevPrice;
-      const diffPercent = prevPrice > 0 ? ((diff / prevPrice) * 100).toFixed(1) : "0.0";
-      
-      let priceColorClass = 'price-flat';
-      let sign = '';
-      if (diff > 0) { priceColorClass = 'price-up'; sign = '+'; }
-      else if (diff < 0) { priceColorClass = 'price-down'; sign = ''; }
-
-      const userStock = userStocks.find(s => s.stock_id === stock.id);
-      const qty = userStock ? userStock.quantity : 0;
-      
-      card.innerHTML = `
-        <span class="stock-name">${stock.company_name} (${stock.symbol})</span>
-        <span style="color: #4b5563; font-size: 0.9em;">
-          ${price} KC 
-          <span class="${priceColorClass}">(${sign}${diff} KC / ${sign}${diffPercent}%)</span>
-          ${qty > 0 ? `| 保有: ${qty}` : ''}
-        </span>
-      `;
-
-      card.addEventListener('click', () => selectStock(stock.id));
-      list.appendChild(card);
-    });
-
-    if (selectedStockId) { updateStockDetailPanel(selectedStockId); }
-  } catch (e) { console.error(e); }
-}
-
-function selectStock(id) {
-  selectedStockId = id;
-  const cards = document.querySelectorAll('.stock-card');
-  cards.forEach(c => c.classList.remove('selected'));
-  
-  const targetCard = document.querySelector(`[data-id="${id}"]`);
-  if (targetCard) targetCard.classList.add('selected');
-
-  document.getElementById('stock-trade-panel').classList.remove('hidden');
-  document.getElementById('stock-action-msg').innerText = '';
-}
-
-// 株式売買の実行
-async function handleStockAction(type) {
-  if (!selectedStockId) return;
-  const qty = parseInt(document.getElementById('trade-qty-input').value);
-  const msgEl = document.getElementById('stock-action-msg');
-  if (isNaN(qty) || qty <= 0) {
-    alert('数量を正しく入力してください');
-    return;
-  }
-
-  const stock = currentStocks.find(s => s.id === selectedStockId);
-  if (!stock) {
-    alert('銘柄情報が見つかりません');
-    return;
-  }
-
-  const totalPrice = Math.round(parseFloat(stock.current_price) * qty);
-  let txId = null;
-
-  if (type === 'buy') {
-    msgEl.innerText = `KCウォレットから ${totalPrice} KC を送金中...`;
-    txId = await sendKCToAdmin(totalPrice);
-    if (!txId) {
-      msgEl.innerText = '支払いに失敗しました';
-      return;
-    }
-    msgEl.innerText = '支払い完了。ゲームに反映中...';
-  } else {
-    msgEl.innerText = '取引中...';
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/stocks/trade`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: userAddress,
-        stockId: selectedStockId,
-        type: type,
-        quantity: qty,
-        txId: txId
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      msgEl.innerText = data.message;
-      updateStocksList();
-      updateUserStatus();
-    } else {
-      msgEl.innerText = `エラー: ${data.error}`;
-    }
-  } catch (e) {
-    msgEl.innerText = '通信エラーが発生しました';
-  }
 }
 
 // ニュースログの更新
@@ -679,28 +556,3 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-function updateStockDetailPanel(id) {
-  if (!currentStocks) return;
-  const stock = currentStocks.find(s => s.id === id);
-  if (!stock) return;
-
-  document.getElementById('trade-stock-name').innerText = `${stock.company_name} (${stock.symbol})`;
-  
-  const price = parseFloat(stock.current_price).toFixed(0);
-  const prevPrice = parseFloat(stock.previous_price || stock.current_price).toFixed(0);
-  const diff = price - prevPrice;
-  const diffPercent = prevPrice > 0 ? ((diff / prevPrice) * 100).toFixed(1) : "0.0";
-  
-  let priceColorClass = 'price-flat';
-  let sign = '';
-  if (diff > 0) { priceColorClass = 'price-up'; sign = '+'; }
-  else if (diff < 0) { priceColorClass = 'price-down'; sign = ''; }
-
-  const userStock = userStocks.find(s => s.stock_id === stock.id);
-  const qty = userStock ? userStock.quantity : 0;
-
-  document.getElementById('trade-stock-price').innerHTML = `${price} KC <span class="${priceColorClass}">(${sign}${diff} KC / ${sign}${diffPercent}%)</span>`;
-  document.getElementById('trade-user-qty').innerText = qty;
-  
-
-}

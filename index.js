@@ -160,24 +160,7 @@ app.get('/api/game/status/:address', async (req, res) => {
 
     if (landsErr) throw landsErr;
 
-    const { data: stocksJoin, error: stocksErr } = await db.supabase
-      .from('user_stocks')
-      .select('quantity, stocks (id, symbol, company_name, current_price, dividend_yield)')
-      .eq('address', address)
-      .gt('quantity', 0);
-
-    if (stocksErr) throw stocksErr;
-
-    const formattedStocks = (stocksJoin || []).map(item => ({
-      id: item.stocks.id,
-      symbol: item.stocks.symbol,
-      company_name: item.stocks.company_name,
-      current_price: parseFloat(item.stocks.current_price),
-      dividend_yield: parseFloat(item.stocks.dividend_yield),
-      quantity: item.quantity
-    }));
-
-    res.json({ success: true, user, lands, stocks: formattedStocks });
+    res.json({ success: true, user, lands });
   } catch (e) {
     console.error("Status Error:", e);
     res.status(500).json({ success: false, error: e.message });
@@ -422,82 +405,6 @@ app.post('/api/game/lands/sell', async (req, res) => {
   }
 });
 
-// 6. 株式一覧取得
-app.get('/api/game/stocks', async (req, res) => {
-  await triggerSimulationSilently();
-  try {
-    const { data: stocks, error: err } = await db.supabase.from('stocks').select('*');
-    if (err) throw err;
-    const formatted = stocks.map(s => ({
-      ...s,
-      current_price: parseFloat(s.current_price),
-      dividend_yield: parseFloat(s.dividend_yield)
-    }));
-    res.json({ success: true, stocks: formatted });
-  } catch (e) {
-    console.error("Stocks Error:", e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// 7. 株式売買
-app.post('/api/game/stocks/trade', async (req, res) => {
-  const { address, stockId, quantity, type, txId } = req.body;
-  if (!address || !stockId || !quantity || quantity <= 0) return res.status(400).json({ success: false, error: '無効なパラメータです' });
-
-  try {
-    const { data: user } = await db.supabase.from('users').select('*').eq('address', address).single();
-    const { data: stock } = await db.supabase.from('stocks').select('*').eq('id', stockId).single();
-    if (!user || !stock) return res.status(404).json({ success: false, error: 'ユーザーまたは株式が見つかりません' });
-
-    const totalPrice = parseFloat(stock.current_price) * quantity;
-
-    if (type === 'buy') {
-      if (!txId) return res.status(400).json({ success: false, error: 'txIdが必要です' });
-      const txRes = await fetch(`${KC_SERVER_URL}/api/transactions/${adminAddress}`);
-      if (!txRes.ok) return res.status(500).json({ success: false, error: 'KCサーバー接続エラー' });
-      const txData = await txRes.json();
-      const tx = txData.transactions.find(t => t.id === txId || t.tx_id === txId);
-      if (!tx || tx.to_addr !== adminAddress || tx.from_addr !== address) return res.status(400).json({ success: false, error: '有効な支払いが見つかりません' });
-      const amountPaid = parseFloat(tx.amountDisplay || (tx.amount / 1000000));
-      if (amountPaid < totalPrice) return res.status(400).json({ success: false, error: '支払額が不足しています' });
-      
-      const { data: logExists } = await db.supabase.from('game_logs').select('id').like('message', `%txId: ${txId}%`).maybeSingle();
-      if (logExists) return res.status(400).json({ success: false, error: '処理済みです' });
-    } else if (type === 'sell') {
-      const { data: hold } = await db.supabase.from('user_stocks').select('quantity').eq('address', address).eq('stock_id', stockId).maybeSingle();
-      if (!hold || hold.quantity < quantity) return res.status(400).json({ success: false, error: '保有数が不足しています' });
-      
-      const nonce = Date.now().toString();
-      const sig = signMessage(`${adminAddress}:${address}:${totalPrice}:${nonce}`);
-      const sendRes = await fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: address, amount: totalPrice, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) });
-      if (!sendRes.ok) return res.status(400).json({ success: false, error: 'KC送金に失敗しました' });
-    } else {
-      return res.status(400).json({ success: false, error: '無効な取引タイプです' });
-    }
-
-    const { data: holding } = await db.supabase.from('user_stocks').select('id, quantity').eq('address', address).eq('stock_id', stockId).maybeSingle();
-    let newQuantity = quantity;
-    if (holding) {
-      newQuantity = type === 'buy' ? holding.quantity + quantity : holding.quantity - quantity;
-      if (newQuantity > 0) {
-        await db.supabase.from('user_stocks').update({ quantity: newQuantity }).eq('id', holding.id);
-      } else {
-        await db.supabase.from('user_stocks').delete().eq('id', holding.id);
-      }
-    } else if (type === 'buy') {
-      await db.supabase.from('user_stocks').insert([{ address, stock_id: stockId, quantity }]);
-    }
-
-    const actionText = type === 'buy' ? '購入' : '売却';
-    await db.supabase.from('game_logs').insert([{ message: `📈「${user.nickname}」が${stock.company_name}株を ${quantity}株 ${actionText}しました` }]);
-
-    res.json({ success: true, message: `${stock.company_name}株を${quantity}株${actionText}しました！` });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 // 8. ログ取得
 app.get('/api/game/logs', async (req, res) => {
   try {
@@ -553,25 +460,6 @@ async function runSimulationInternal() {
       { address: 'SYSTEM_CLOCK', public_key: 'SYSTEM_CLOCK', nickname: 'SYSTEM_CLOCK', balance_cash: newClock }
     ], { onConflict: 'address' });
 
-    // 1. Stocks
-    const { data: stocks } = await db.supabase.from('stocks').select('*');
-    if (stocks) {
-      const previousPricesStr = JSON.stringify(stocks.map(s => ({ id: s.id, p: s.current_price })));
-      await db.supabase.from('users').upsert([
-        { address: 'SYSTEM_PRICES', public_key: 'SYSTEM_PRICES', nickname: previousPricesStr, balance_cash: 0 }
-      ], { onConflict: 'address' });
-
-      for (const stock of stocks) {
-        let newPrice = parseFloat(stock.current_price);
-        for(let i=0; i<elapsedSteps; i++) {
-          const changePercent = (Math.random() * 0.2) - 0.1;
-          newPrice = newPrice * (1 + changePercent);
-        }
-        newPrice = Math.max(10, Math.round(newPrice * 100) / 100);
-        await db.supabase.from('stocks').update({ current_price: newPrice }).eq('id', stock.id);
-      }
-    }
-
     // 2. Lands
     const { data: lands } = await db.supabase.from('lands').select('*');
     if (lands) {
@@ -605,23 +493,6 @@ async function runSimulationInternal() {
       }
     }
 
-    // 4. Dividends
-    const { data: holdings } = await db.supabase.from('user_stocks').select('quantity, address, stock_id').gt('quantity', 0);
-    if (holdings && stocks) {
-      for (const hold of holdings) {
-        const stock = stocks.find(s => s.id === hold.stock_id);
-        if (stock) {
-          const singleDiv = Math.round(parseFloat(stock.current_price) * hold.quantity * 0.008);
-          const totalDiv = singleDiv * elapsedSteps;
-          if (totalDiv > 0) {
-            const nonce = Date.now().toString() + Math.floor(Math.random()*1000);
-            const sig = signMessage(`${adminAddress}:${hold.address}:${totalDiv}:${nonce}`);
-            fetch(`${KC_SERVER_URL}/api/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: adminAddress, to: hold.address, amount: totalDiv, nonce, signature: sig, publicKey: adminPublicKeyBase64, nickname: 'take-money', senderName: 'take-money' }) }).catch(e => console.error(e));
-          }
-        }
-      }
-    }
-
     if (Math.random() < 0.5) {
       const events = [
         `📢 経過報告：時間経過に伴い、${elapsedSteps}回分の市場変動・家賃振込が完了しました！`
@@ -641,7 +512,7 @@ async function runSimulationInternal() {
 async function triggerSimulationSilently() {
   try {
     // バックグラウンドで非同期実行（レスポンスをブロックしないようにする）
-    runSimulationInternal().catch(err => console.error("Triggered simulation error:", err));
+    await runSimulationInternal().catch(err => console.error("Triggered simulation error:", err));
   } catch (e) {
     // ignore
   }
